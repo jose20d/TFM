@@ -1,0 +1,35 @@
+[
+  {
+    "source_name": "worldbank_wgi",
+    "source_type": "api_rest",
+    "base_url": "https://api.worldbank.org/v2",
+    "endpoint": "/country/all/indicator/PV.EST?format=json",
+    "expected_format": "json",
+    "auth_required": "false",
+    "env_vars": []
+  },
+  {
+    "source_name": "usgs_mrds",
+    "source_type": "file_download",
+    "base_url": "https://mrdata.usgs.gov/mrds/",
+    "endpoint": null,
+    "expected_format": "csv",
+    "auth_required": "false",
+    "env_vars": [
+      "MRDS_CSV_URL"
+    ]
+  },
+  {
+    "source_name": "onegeology_wms",
+    "source_type": "gis_service",
+    "base_url": "https://portal.onegeology.org/",
+    "endpoint": null,
+    "expected_format": "xml",
+    "auth_required": "false",
+    "env_vars": [
+      "ONEGEOLOGY_WMS_URL"
+    ]
+  }
+]
+
+

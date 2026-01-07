@@ -1,0 +1,39 @@
+{
+  "run": {
+    "allow_partial": true,
+    "max_retries": 3,
+    "timeout_seconds": 20
+  },
+  "sources": [
+    {
+      "id": "open_meteo_madrid",
+      "type": "http_json",
+      "request": {
+        "method": "GET",
+        "url": "https://api.open-meteo.com/v1/forecast",
+        "params": {
+          "latitude": 40.4168,
+          "longitude": -3.7038,
+          "hourly": "temperature_2m",
+          "forecast_days": 1
+        }
+      },
+      "extract": {
+        "record_path": "hourly.time",
+        "value_paths": {
+          "temperature_2m": "hourly.temperature_2m"
+        }
+      }
+    },
+    {
+      "id": "local_csv_demo",
+      "type": "file_csv",
+      "file": {
+        "path": "data/in/demo.csv",
+        "encoding": "utf-8"
+      }
+    }
+  ]
+}
+
+
