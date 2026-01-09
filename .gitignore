@@ -11,5 +11,8 @@ venv/
 
 data/out/
 data/demo/
+scripts/data/
+output/
+data.zip
 
 

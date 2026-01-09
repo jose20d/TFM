@@ -12,23 +12,19 @@
     "source_name": "usgs_mrds",
     "source_type": "file_download",
     "base_url": "https://mrdata.usgs.gov/mrds/",
-    "endpoint": null,
+    "endpoint": "mrds.csv",
     "expected_format": "csv",
     "auth_required": "false",
-    "env_vars": [
-      "MRDS_CSV_URL"
-    ]
+    "env_vars": []
   },
   {
     "source_name": "onegeology_wms",
     "source_type": "gis_service",
     "base_url": "https://portal.onegeology.org/",
-    "endpoint": null,
+    "endpoint": "OnegeologyGlobal/geoportal/wms?service=WMS&request=GetCapabilities",
     "expected_format": "xml",
     "auth_required": "false",
-    "env_vars": [
-      "ONEGEOLOGY_WMS_URL"
-    ]
+    "env_vars": []
   }
 ]
 
