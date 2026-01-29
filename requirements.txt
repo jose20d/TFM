@@ -1,3 +1,4 @@
-# Main project dependencies will be added here.
-# (Week 1 demo dependencies are pinned under: archive/week1_data_consumption_demo/requirements.txt)
+pandas
+openpyxl
+streamlit
 
