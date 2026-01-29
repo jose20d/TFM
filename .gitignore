@@ -9,10 +9,13 @@ venv/
 
 .DS_Store
 
-data/out/
-data/demo/
-scripts/data/
+data/
 output/
-data.zip
+
+# Archived demos may generate their own local outputs
+archive/**/data/
+archive/**/output/
+archive/**/.venv/
+
 
 

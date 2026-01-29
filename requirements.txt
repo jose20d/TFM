@@ -1,4 +1,3 @@
-requests==2.32.3
-pandas==2.2.3
-folium==0.17.0
+# Main project dependencies will be added here.
+# (Week 1 demo dependencies are pinned under: archive/week1_data_consumption_demo/requirements.txt)
 
