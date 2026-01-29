@@ -2,6 +2,12 @@
 
 This is the **main codebase** for the Master Thesis project. New development starts here.
 
+## Current scope (Phase 2)
+
+- Normalize reference datasets (CSV/XLSX) into JSONL, no database.
+- Filter by country using ISO3 or country name (with aliases).
+- Explore relationships locally via Streamlit (optional).
+
 ## Traceability: Week 1 data-source validation demo (archived)
 
 The Week 1 technical demo used to validate the approved data sources (download → local JSON/JSONL → local HTML map) has been archived here:
@@ -16,11 +22,37 @@ To run the archived Week 1 demo:
 cd archive/week1_data_consumption_demo && bash ./run_demo.sh
 ```
 
+## How to run (main codebase)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Normalize XLSX → JSONL (GDP, Population, CPI, FSI)
+python scripts/normalize_xlsx.py
+
+# Build MRDS dep_id → country map
+python scripts/build_mrds_country_map.py
+
+# Run example queries (CPI/FSI/GDP/Population)
+python scripts/run_queries.py
+
+# Filter MRDS tables by country
+python scripts/filter_mrds_by_country.py --input references/Rocks.csv --country "Chile" --out output/queries/rocks_chile.json
+```
+
+## Optional UI (local Streamlit)
+
+```bash
+streamlit run streamlit_app.py
+```
+
 ## Repository conventions
 
 - **Language**: code and primary documentation are in **English**.
 - **No database**: Week 1 artifacts produce local files only.
-- **No generated data in Git**: `data/` and `output/` are generated and ignored by `.gitignore`.
+- **No generated data in Git**: `data/`, `output/`, and `otros/` are generated and ignored by `.gitignore`.
 
 
 

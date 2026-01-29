@@ -11,6 +11,9 @@ venv/
 
 data/
 output/
+otros/
+references/**
+!references/.gitkeep
 
 # Archived demos may generate their own local outputs
 archive/**/data/
