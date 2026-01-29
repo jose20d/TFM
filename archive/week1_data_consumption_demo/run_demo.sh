@@ -45,4 +45,3 @@ if command -v xdg-open >/dev/null 2>&1; then
   xdg-open "$OUT_HTML" >/dev/null 2>&1 &
 fi
 
-
