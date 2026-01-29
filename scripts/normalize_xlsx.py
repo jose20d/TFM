@@ -91,7 +91,8 @@ def main(argv: list[str] | None = None) -> int:
         fixed_year = ds.get("fixed_year")
         value_field = ds.get("value_field")
 
-        usecols = [c for c in [country_field, iso_field, year_field, value_field] if c]
+        rank_field = "Rank" if ds_id == "fsi_2023" else None
+        usecols = [c for c in [country_field, iso_field, year_field, value_field, rank_field] if c]
 
         try:
             df = pd.read_excel(path, header=header_index, usecols=usecols)
@@ -104,7 +105,12 @@ def main(argv: list[str] | None = None) -> int:
             raw_country = row.get(country_field) if country_field else None
             raw_iso = row.get(iso_field) if iso_field else None
             raw_year = row.get(year_field) if year_field else None
-            raw_value = row.get(value_field) if value_field else None
+            if rank_field and rank_field in row:
+                raw_value = row.get(rank_field)
+                if raw_value is None or (isinstance(raw_value, float) and pd.isna(raw_value)):
+                    raw_value = row.get(value_field) if value_field else None
+            else:
+                raw_value = row.get(value_field) if value_field else None
 
             if raw_country is None and raw_iso is None:
                 continue
