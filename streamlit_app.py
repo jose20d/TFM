@@ -45,6 +45,124 @@ def filter_mrds_by_country(dep_ids: set[str], csv_path: Path) -> pd.DataFrame:
     return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
 
 
+def _normalize_na(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    for col in columns:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+            df.loc[df[col].isin(["", "nan", "None"]), col] = "N/A"
+    return df
+
+
+def _load_csv_columns(path: Path) -> list[str]:
+    try:
+        header = pd.read_csv(path, nrows=0)
+        return list(header.columns)
+    except Exception:
+        return []
+
+
+def load_clean_mrds_table(
+    csv_path: Path,
+    dep_ids: set[str],
+    keep_columns: list[str],
+    *,
+    invalid_countries: set[str] | None = None,
+) -> pd.DataFrame:
+    columns = _load_csv_columns(csv_path)
+    if "dep_id" not in columns:
+        return pd.DataFrame()
+
+    usecols = [c for c in ["dep_id", *keep_columns] if c in columns]
+    chunks = []
+    for chunk in pd.read_csv(csv_path, usecols=usecols, chunksize=100_000):
+        mask = chunk["dep_id"].astype(str).isin(dep_ids)
+        if not mask.any():
+            continue
+        filtered = chunk.loc[mask].copy()
+
+        if csv_path.name == "Location.csv":
+            if "country" in filtered.columns:
+                filtered["country"] = filtered["country"].astype(str).str.strip()
+                if invalid_countries:
+                    filtered = filtered[~filtered["country"].isin(invalid_countries)]
+                filtered = filtered[filtered["country"].notna() & (filtered["country"] != "")]
+            if "state_prov" in filtered.columns:
+                filtered["state_prov"] = filtered["state_prov"].astype(str).str.strip()
+                filtered.loc[filtered["state_prov"] == "", "state_prov"] = "N/A"
+
+        if csv_path.name == "MRDS.csv":
+            if "latitude" in filtered.columns:
+                filtered["latitude"] = pd.to_numeric(filtered["latitude"], errors="coerce")
+            if "longitude" in filtered.columns:
+                filtered["longitude"] = pd.to_numeric(filtered["longitude"], errors="coerce")
+            if "latitude" in filtered.columns and "longitude" in filtered.columns:
+                filtered = filtered[
+                    filtered["latitude"].between(-90, 90)
+                    & filtered["longitude"].between(-180, 180)
+                ]
+
+        text_cols = [c for c in keep_columns if c in filtered.columns]
+        filtered = _normalize_na(filtered, text_cols)
+        chunks.append(filtered)
+
+    return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+
+
+def build_clean_mrds_join(dep_ids: set[str], references_root: Path) -> pd.DataFrame:
+    invalid_countries = {"AF", "EU", "AS", "OC", "SA", "CR"}
+    tables = {
+        "Location": (
+            references_root / "Location.csv",
+            ["country", "state_prov"],
+        ),
+        "Ages": (
+            references_root / "Ages.csv",
+            ["age_tp", "age_young"],
+        ),
+        "Commodity": (
+            references_root / "Commodity.csv",
+            ["commod", "code", "commod_tp", "commod_group", "import"],
+        ),
+        "Materials": (
+            references_root / "Materials.csv",
+            ["rec", "ore_gangue", "material"],
+        ),
+        "MRDS": (
+            references_root / "MRDS.csv",
+            ["code_list", "longitude", "latitude", "name", "dev_stat"],
+        ),
+        "Ownership": (
+            references_root / "Ownership.csv",
+            ["owner_name", "owner_tp"],
+        ),
+        "Physiography": (
+            references_root / "Physiography.csv",
+            ["phys_div", "phys_prov", "phys_sect", "phys_det"],
+        ),
+        "Rocks": (
+            references_root / "Rocks.csv",
+            ["rock_cls", "first_ord_nm", "second_ord_nm", "third_ord_nm", "low_name"],
+        ),
+    }
+
+    joined: pd.DataFrame | None = None
+    for name, (path, cols) in tables.items():
+        if not _file_exists(path):
+            continue
+        table_df = load_clean_mrds_table(
+            path, dep_ids, cols, invalid_countries=invalid_countries
+        )
+        if table_df.empty:
+            return pd.DataFrame()
+        table_df = table_df.rename(columns={c: f"{name.lower()}_{c}" for c in cols})
+        if joined is None:
+            joined = table_df
+        else:
+            joined = joined.merge(table_df, on="dep_id", how="inner")
+
+    return joined if joined is not None else pd.DataFrame()
+
+
 def get_country_options(df: pd.DataFrame) -> list[str]:
     if "country_norm" in df.columns:
         return sorted({str(x) for x in df["country_norm"].dropna().unique()})
@@ -200,6 +318,17 @@ def main() -> None:
 
         st.write(f"Rows: {len(filtered)}")
         st.dataframe(filtered.head(500), use_container_width=True)
+        st.caption("Showing first 500 rows for performance.")
+
+        st.markdown("---")
+        st.subheader("Clean Data (Unified by dep_id)")
+        st.caption("Inner join across MRDS tables with cleaned columns.")
+
+        with st.spinner("Building clean unified dataset..."):
+            clean_join = build_clean_mrds_join(dep_ids, REFERENCES)
+
+        st.write(f"Rows after inner join: {len(clean_join)}")
+        st.dataframe(clean_join.head(500), use_container_width=True)
         st.caption("Showing first 500 rows for performance.")
 
 
