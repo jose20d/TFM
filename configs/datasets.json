@@ -4,9 +4,9 @@
   "datasets": [
     {
       "id": "mrds_csv",
-      "name": "USGS MRDS (CSV bundle)",
-      "url": "https://mrdata.usgs.gov/mrds/mrds-csv.zip",
-      "output_filename": "mrds-csv.zip"
+      "name": "USGS MRDS (RDBMS tables)",
+      "url": "https://mrdata.usgs.gov/mrds/rdbms-tab-all.zip",
+      "output_filename": "rdbms-tab-all.zip"
     },
     {
       "id": "worldbank_gdp",
