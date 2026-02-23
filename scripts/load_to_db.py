@@ -233,14 +233,33 @@ def _load_mrds_location(path: Path, aliases: dict[str, str]) -> pd.DataFrame:
     return df
 
 
+def _dedupe_countries(
+    rows: Iterable[tuple[str, str, str | None]]
+) -> list[tuple[str, str, str | None]]:
+    unique: dict[str, tuple[str, str, str | None]] = {}
+    for name, norm, iso3 in rows:
+        if not norm:
+            continue
+        if norm not in unique:
+            unique[norm] = (name, norm, iso3)
+            continue
+        # Prefer an ISO3 if we see one later.
+        if unique[norm][2] is None and iso3:
+            unique[norm] = (name, norm, iso3)
+    return list(unique.values())
+
+
 def _insert_countries(cur, rows: Iterable[tuple[str, str, str | None]]) -> None:
+    rows = _dedupe_countries(rows)
+    if not rows:
+        return
     sql = """
         INSERT INTO dim_country (country_name, country_norm, iso3)
         VALUES %s
         ON CONFLICT (country_norm) DO UPDATE
         SET iso3 = COALESCE(dim_country.iso3, EXCLUDED.iso3)
     """
-    execute_values(cur, sql, list(rows))
+    execute_values(cur, sql, rows)
 
 
 def _country_id_map(cur) -> dict[str, int]:
@@ -272,6 +291,21 @@ def _insert_dataset_config(cur, cfg: dict[str, Any]) -> None:
     execute_values(cur, sql, rows)
 
 
+def _ensure_dataset_config_seed(cur) -> None:
+    """
+    Seed dataset_config if the table is empty to avoid first-run failures.
+    """
+    cur.execute("SELECT COUNT(*) FROM dataset_config")
+    count = cur.fetchone()[0]
+    if count and count > 0:
+        return
+
+    seed_path = REPO_ROOT / "database" / "seed_dataset_config.sql"
+    if not seed_path.exists():
+        return
+    cur.execute(seed_path.read_text(encoding="utf-8"))
+
+
 def main() -> int:
     config_path = REPO_ROOT / "configs" / "datasets.json"
     raw_dir = REPO_ROOT / "data" / "raw"
@@ -286,11 +320,12 @@ def main() -> int:
     aliases = load_aliases(aliases_path) if aliases_path.exists() else {}
 
     # Initialize schema before loading data to keep the pipeline idempotent.
-    # PostGIS is enabled at schema time to support future spatial analytics.
+    # PostGIS must be enabled by the database administrator.
     initialize_schema()
 
     with get_connection() as conn:
         with conn.cursor() as cur:
+            _ensure_dataset_config_seed(cur)
             _insert_dataset_config(cur, cfg)
 
             # Countries from MRDS Location
