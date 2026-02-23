@@ -12,6 +12,9 @@ def _read_sql(path: Path) -> str:
 def initialize_schema() -> None:
     """
     Initialize database schema and indexes in an idempotent way.
+
+    PostGIS is enabled by the schema script to support spatial features
+    even if the first iterations only use basic geometry fields.
     """
     repo_root = Path(__file__).resolve().parents[1]
     schema_path = repo_root / "database" / "create_schema.sql"

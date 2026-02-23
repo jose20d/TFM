@@ -8,6 +8,7 @@ from psycopg2.extensions import connection as PgConnection
 
 
 def _get_env(name: str, default: str | None = None) -> str | None:
+    # Environment variables keep credentials out of source control.
     value = os.getenv(name, default)
     if value is None or value == "":
         return default

@@ -56,6 +56,14 @@ streamlit run streamlit_app.py
 - PostGIS is enabled from the beginning to support geospatial queries on mineral deposit data.
 - Schema creation is idempotent to allow safe reruns in CI, local setups, and recovery workflows.
 
+## Database Architecture Rationale
+
+- **Dataset configuration vs. ETL logs**: `dataset_config` defines sources and formats, while `etl_load_log` captures execution results and data lineage.
+- **Raw preservation**: raw downloads remain intact so every load can be reproduced or audited without ambiguity.
+- **PostgreSQL + PostGIS**: a relational core is needed for joins and analytics, and PostGIS prepares the model for spatial queries on deposits.
+- **No intermediate JSON layer**: data is normalized directly into PostgreSQL to avoid duplicate storage and reduce operational complexity.
+- **Future geospatial analytics**: the schema includes geometry fields and spatial indexes to support map-based exploration and distance queries.
+
 ## Repository conventions
 
 - **Language**: code and primary documentation are in **English**.

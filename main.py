@@ -14,7 +14,6 @@ REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "configs" / "datasets.json"
 RAW_DIR = REPO_ROOT / "data" / "raw"
 REFERENCES_DIR = REPO_ROOT / "references"
-NORMALIZED_DIR = REPO_ROOT / "data" / "normalized"
 
 
 def _read_config(path: Path) -> dict:
@@ -74,6 +73,7 @@ def main() -> int:
         print("ERROR: datasets list is missing in config", file=sys.stderr)
         return 2
 
+    # Keep raw downloads intact for traceability and auditing.
     download_datasets.main(
         [
             "--config",
@@ -94,13 +94,10 @@ def main() -> int:
         else:
             print(f"[warn] MRDS zip not found at {zip_path}", file=sys.stderr)
 
-    normalize_script = REPO_ROOT / "scripts" / "normalize_indicators.py"
-    if normalize_script.exists():
-        _run_script(normalize_script, [])
-
-    mrds_map_script = REPO_ROOT / "scripts" / "build_mrds_country_map.py"
-    if mrds_map_script.exists():
-        _run_script(mrds_map_script, [])
+    # Normalize directly into PostgreSQL (no JSON staging).
+    load_script = REPO_ROOT / "scripts" / "load_to_db.py"
+    if load_script.exists():
+        _run_script(load_script, [])
 
     cmd = [sys.executable, "-m", "streamlit", "run", str(REPO_ROOT / "streamlit_app.py")]
     return subprocess.call(cmd)
