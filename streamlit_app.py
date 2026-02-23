@@ -38,11 +38,18 @@ def latest_value_for_country(df: pd.DataFrame, selected: str) -> tuple[object | 
 
 def _fetch_countries() -> pd.DataFrame:
     # The UI reads from PostgreSQL to avoid intermediate JSON files.
-    with get_connection() as conn:
-        return pd.read_sql_query(
-            "SELECT country_norm, country_name FROM dim_country ORDER BY country_name",
-            conn,
+    try:
+        with get_connection() as conn:
+            return pd.read_sql_query(
+                "SELECT country_norm, country_name FROM dim_country ORDER BY country_name",
+                conn,
+            )
+    except Exception as exc:
+        st.error(
+            "Database is not initialized. Run `python3 main.py` after enabling PostGIS.",
         )
+        st.caption(f"Details: {exc}")
+        return pd.DataFrame()
 
 
 def _fetch_indicator(country_norm: str, dataset_id: str) -> pd.DataFrame:

@@ -44,7 +44,7 @@ streamlit run streamlit_app.py
 - Raw datasets are preserved unmodified to keep a verifiable source of truth for audits and reprocessing.
 - Normalization writes directly to PostgreSQL to avoid intermediate JSON staging and reduce duplication of storage.
 - Dataset metadata is stored in the database to support lineage, traceability, and repeatable ETL execution.
-- PostGIS is enabled from the beginning to support geospatial queries on mineral deposit data.
+- PostGIS is enabled from the beginning to support geospatial queries on mineral deposit data (installed by DB admin).
 - Schema creation is idempotent to allow safe reruns in CI, local setups, and recovery workflows.
 
 ## Database Architecture Rationale

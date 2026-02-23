@@ -97,7 +97,10 @@ def main() -> int:
     # Normalize directly into PostgreSQL (no JSON staging).
     load_script = REPO_ROOT / "scripts" / "load_to_db.py"
     if load_script.exists():
-        _run_script(load_script, [])
+        exit_code = _run_script(load_script, [])
+        if exit_code != 0:
+            print("ERROR: database load failed. Streamlit will not start.", file=sys.stderr)
+            return exit_code
 
     cmd = [sys.executable, "-m", "streamlit", "run", str(REPO_ROOT / "streamlit_app.py")]
     return subprocess.call(cmd)

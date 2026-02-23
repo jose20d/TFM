@@ -1,8 +1,7 @@
 -- Database schema for the TFM project.
 -- This script is idempotent and safe to run multiple times.
 
--- Enable PostGIS extension if it is not already available.
-CREATE EXTENSION IF NOT EXISTS postgis;
+-- PostGIS is expected to be installed and enabled by the database administrator.
 
 -- =========================
 -- Metadata tables
