@@ -31,4 +31,4 @@ CREATE INDEX IF NOT EXISTS idx_mrds_ages_dep
 
 -- Country indicators lookups.
 CREATE INDEX IF NOT EXISTS idx_country_indicator_country_dataset_year
-    ON country_indicator (country_id, dataset_id, year);
+    ON country_indicator (country_id, dataset_id, indicator_code, year);
