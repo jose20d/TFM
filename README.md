@@ -4,8 +4,8 @@ This is the **main codebase** for the Master Thesis project. New development sta
 
 ## Current scope (Phase 2)
 
-- Normalize reference datasets (CSV/XLSX) into JSONL, no database.
-- Filter by country using ISO3 or country name (with aliases).
+- Download raw datasets for traceability.
+- Clean and normalize data directly into PostgreSQL/PostGIS.
 - Explore relationships locally via Streamlit (optional).
 
 ## Traceability: Week 1 data-source validation demo (archived)
@@ -29,17 +29,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Normalize XLSX → JSONL (GDP, Population, CPI, FSI)
-python scripts/normalize_xlsx.py
-
-# Build MRDS dep_id → country map
-python scripts/build_mrds_country_map.py
-
-# Run example queries (CPI/FSI/GDP/Population)
-python scripts/run_queries.py
-
-# Filter MRDS tables by country
-python scripts/filter_mrds_by_country.py --input references/Rocks.csv --country "Chile" --out output/queries/rocks_chile.json
+# Run the full pipeline (download → clean → load → Streamlit)
+python3 main.py
 ```
 
 ## Optional UI (local Streamlit)

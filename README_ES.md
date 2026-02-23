@@ -4,8 +4,8 @@ Este es el **código principal** del TFM. El desarrollo nuevo empieza aquí.
 
 ## Alcance actual (Fase 2)
 
-- Normalizar datasets de referencia (CSV/XLSX) a JSONL, sin base de datos.
-- Filtrar por país usando ISO3 o nombre (con aliases).
+- Descargar datasets crudos para trazabilidad.
+- Limpiar y normalizar directamente en PostgreSQL/PostGIS.
 - Explorar relaciones localmente con Streamlit (opcional).
 
 ## Trazabilidad: demo de validación de fuentes (Semana 1) — archivada
@@ -29,17 +29,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Normalizar XLSX → JSONL (PIB, Población, CPI, FSI)
-python scripts/normalize_xlsx.py
-
-# Construir mapa dep_id → país para MRDS
-python scripts/build_mrds_country_map.py
-
-# Ejecutar ejemplos de consulta (CPI/FSI/PIB/Población)
-python scripts/run_queries.py
-
-# Filtrar tablas MRDS por país
-python scripts/filter_mrds_by_country.py --input references/Rocks.csv --country "Chile" --out output/queries/rocks_chile.json
+# Ejecutar el pipeline completo (descarga → limpieza → carga → Streamlit)
+python3 main.py
 ```
 
 ## UI opcional (Streamlit local)
