@@ -222,7 +222,7 @@ def _log_etl(
 
 
 def _load_mrds_location(path: Path, aliases: dict[str, str]) -> pd.DataFrame:
-    df = pd.read_csv(path, usecols=["dep_id", "country", "state_prov", "region", "county"])
+    df = _read_mrds_table(path, usecols=["dep_id", "country", "state_prov", "region", "county"])
     df = df[df["country"].notna()]
     df["country"] = df["country"].astype(str).str.strip()
     invalid_countries = {"AF", "EU", "AS", "OC", "SA", "CR"}
@@ -231,6 +231,29 @@ def _load_mrds_location(path: Path, aliases: dict[str, str]) -> pd.DataFrame:
     df["country_norm"] = df["country"].apply(normalize_country_name)
     df["country_norm"] = df["country_norm"].map(lambda x: aliases.get(x, x))
     return df
+
+
+def _resolve_mrds_file(base_dir: Path, name: str) -> Path | None:
+    """
+    Resolve MRDS tables that may be delivered as .csv or .txt.
+    The rdbms-tab-all bundle uses tab-delimited .txt files.
+    """
+    csv_path = base_dir / f"{name}.csv"
+    txt_path = base_dir / f"{name}.txt"
+    if csv_path.exists():
+        return csv_path
+    if txt_path.exists():
+        return txt_path
+    return None
+
+
+def _read_mrds_table(path: Path, usecols: list[str]) -> pd.DataFrame:
+    """
+    Read MRDS tables from either .csv or .txt files.
+    Tab-delimited .txt files are used in the rdbms-tab-all archive.
+    """
+    delimiter = "\t" if path.suffix.lower() == ".txt" else ","
+    return pd.read_csv(path, usecols=usecols, sep=delimiter)
 
 
 def _dedupe_countries(
@@ -329,8 +352,8 @@ def main() -> int:
             _insert_dataset_config(cur, cfg)
 
             # Countries from MRDS Location
-            loc_path = mrds_extract / "Location.csv"
-            location_df = _load_mrds_location(loc_path, aliases) if loc_path.exists() else pd.DataFrame()
+            loc_path = _resolve_mrds_file(mrds_extract, "Location")
+            location_df = _load_mrds_location(loc_path, aliases) if loc_path else pd.DataFrame()
 
             # Countries from indicators
             countries = []
@@ -359,10 +382,10 @@ def main() -> int:
             country_map = _country_id_map(cur)
 
             # MRDS deposit
-            mrds_path = mrds_extract / "MRDS.csv"
+            mrds_path = _resolve_mrds_file(mrds_extract, "MRDS")
             mrds_inserted = 0
-            if mrds_path.exists():
-                df = pd.read_csv(
+            if mrds_path and mrds_path.exists():
+                df = _read_mrds_table(
                     mrds_path,
                     usecols=["dep_id", "name", "dev_stat", "code_list", "latitude", "longitude"],
                 )
@@ -436,36 +459,36 @@ def main() -> int:
 
             # MRDS related tables
             related = {
-                "Commodity.csv": (
+                "Commodity": (
                     "mrds_commodity",
                     ["dep_id", "commod", "code", "commod_tp", "commod_group", "import"],
                 ),
-                "Materials.csv": (
+                "Materials": (
                     "mrds_material",
                     ["dep_id", "rec", "ore_gangue", "material"],
                 ),
-                "Ownership.csv": (
+                "Ownership": (
                     "mrds_ownership",
                     ["dep_id", "owner_name", "owner_tp"],
                 ),
-                "Physiography.csv": (
+                "Physiography": (
                     "mrds_physiography",
                     ["dep_id", "phys_div", "phys_prov", "phys_sect", "phys_det"],
                 ),
-                "Ages.csv": (
+                "Ages": (
                     "mrds_ages",
                     ["dep_id", "age_tp", "age_young"],
                 ),
-                "Rocks.csv": (
+                "Rocks": (
                     "mrds_rocks",
                     ["dep_id", "rock_cls", "first_ord_nm", "second_ord_nm", "third_ord_nm", "low_name"],
                 ),
             }
-            for filename, (table, cols) in related.items():
-                path = mrds_extract / filename
-                if not path.exists():
+            for name, (table, cols) in related.items():
+                path = _resolve_mrds_file(mrds_extract, name)
+                if not path or not path.exists():
                     continue
-                df = pd.read_csv(path, usecols=cols)
+                df = _read_mrds_table(path, usecols=cols)
                 rows = [tuple(r) for r in df.itertuples(index=False)]
                 sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES %s"
                 execute_values(cur, sql, rows)
