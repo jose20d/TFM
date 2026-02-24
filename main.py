@@ -13,7 +13,6 @@ from scripts import download_datasets
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "configs" / "datasets.json"
 RAW_DIR = REPO_ROOT / "data" / "raw"
-REFERENCES_DIR = REPO_ROOT / "references"
 
 
 def _read_config(path: Path) -> dict:
@@ -33,28 +32,6 @@ def _extract_zip(zip_path: Path, dest_dir: Path) -> None:
     dest_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(dest_dir)
-
-
-def _copy_file(src: Path, dest: Path) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(src.read_bytes())
-
-
-def _prepare_mrds_files(extract_dir: Path) -> None:
-    required = [
-        "MRDS.csv",
-        "Location.csv",
-        "Rocks.csv",
-        "Commodity.csv",
-        "Materials.csv",
-        "Ownership.csv",
-        "Physiography.csv",
-        "Ages.csv",
-    ]
-    for name in required:
-        src = extract_dir / name
-        if src.exists():
-            _copy_file(src, REFERENCES_DIR / name)
 
 
 def _run_script(path: Path, args: list[str]) -> int:
@@ -90,7 +67,6 @@ def main() -> int:
         if zip_path.exists():
             extract_dir = RAW_DIR / "mrds_csv" / "extracted"
             _extract_zip(zip_path, extract_dir)
-            _prepare_mrds_files(extract_dir)
         else:
             print(f"[warn] MRDS zip not found at {zip_path}", file=sys.stderr)
 

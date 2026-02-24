@@ -21,10 +21,17 @@
       "output_filename": "SP.POP.TOTL.json"
     },
     {
-      "id": "fsi_2023",
-      "name": "Fragile States Index 2023 (Excel)",
+      "id": "fsi",
+      "name": "Fragile States Index (Excel)",
       "url": "https://fragilestatesindex.org/wp-content/uploads/2023/06/FSI-2023-DOWNLOAD.xlsx",
-      "output_filename": "FSI-2023-DOWNLOAD.xlsx"
+      "output_filename": "FSI-DOWNLOAD.xlsx"
+    },
+    {
+      "id": "cpi",
+      "name": "Transparency International CPI",
+      "url": "https://files.transparencycdn.org/images/CPI2025_Results.xlsx",
+      "output_filename": "CPI2025_Results.xlsx",
+      "output_dir": "cpi"
     }
   ]
 }

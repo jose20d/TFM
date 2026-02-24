@@ -29,14 +29,47 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
+# Database connection (adjust as needed)
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_NAME=tfm
+export DB_USER=tfm
+export DB_PASSWORD='your_password'
+
 # Run the full pipeline (download → clean → load → Streamlit)
 python3 main.py
 ```
+
+Note: CPI is configured in `configs/datasets.json` but download is disabled by default.
+Update the CPI URL to a direct XLSX and set `"download": true` to enable it.
 
 ## Optional UI (local Streamlit)
 
 ```bash
 streamlit run streamlit_app.py
+```
+
+## Prerequisites
+
+- **OS**: Linux (Ubuntu 22.04+ recommended). This project is tested for Linux environments.
+- **Python**: 3.10+ (recommended 3.12).
+- **PostgreSQL**: 14+ (server and client tools).
+- **PostGIS**: enabled in the target database.
+
+### PostgreSQL installation
+
+Follow the official PostgreSQL installation guide for your Linux distribution:
+- PostgreSQL Global Development Group. (2024). *PostgreSQL: Linux downloads (Debian/Ubuntu)*. https://www.postgresql.org/download/linux/ubuntu/
+
+### PostGIS installation
+
+Install PostGIS using the official documentation:
+- PostGIS Project. (2024). *PostGIS: Installation*. https://postgis.net/documentation/
+
+After installing PostGIS, enable it in your database (as a superuser):
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
 ```
 
 ## Architecture Decisions
@@ -47,18 +80,25 @@ streamlit run streamlit_app.py
 - PostGIS is enabled from the beginning to support geospatial queries on mineral deposit data (installed by DB admin).
 - Schema creation is idempotent to allow safe reruns in CI, local setups, and recovery workflows.
 
-## Database Architecture Rationale
-
+## Database Architecture
 - **Dataset configuration vs. ETL logs**: `dataset_config` defines sources and formats, while `etl_load_log` captures execution results and data lineage.
 - **Raw preservation**: raw downloads remain intact so every load can be reproduced or audited without ambiguity.
 - **PostgreSQL + PostGIS**: a relational core is needed for joins and analytics, and PostGIS prepares the model for spatial queries on deposits.
 - **No intermediate JSON layer**: data is normalized directly into PostgreSQL to avoid duplicate storage and reduce operational complexity.
 - **Future geospatial analytics**: the schema includes geometry fields and spatial indexes to support map-based exploration and distance queries.
 
+## Design constraints / tribunal guardrails
+
+- The pipeline never requires a PostgreSQL superuser; PostGIS must be enabled by an administrator beforehand.
+- Raw downloads are kept intact for traceability and auditability.
+- No JSONL staging is used in the main path; data is cleaned in-memory and loaded directly into PostgreSQL.
+- `dataset_config` is the single metadata registry table; `dim_dataset` is intentionally not used.
+- A single command (`python3 main.py`) runs the end-to-end flow with no interactive prompts.
+
 ## Repository conventions
 
 - **Language**: code and primary documentation are in **English**.
-- **No database**: Week 1 artifacts produce local files only.
+- **Database layer**: the main pipeline loads into PostgreSQL/PostGIS.
 - **No generated data in Git**: `data/`, `output/`, and `otros/` are generated and ignored by `.gitignore`.
 
 

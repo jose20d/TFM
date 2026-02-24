@@ -150,8 +150,8 @@ def main() -> None:
     indicator_map = {
         "GDP (World Bank)": "worldbank_gdp",
         "Population (World Bank)": "worldbank_population",
-        "CPI 2023": "cpi_2023",
-        "FSI 2023": "fsi_2023",
+        "CPI (latest)": "cpi",
+        "FSI (latest)": "fsi",
     }
     indicator_data: dict[str, pd.DataFrame] = {}
     for ds_id in indicator_map.values():
@@ -164,26 +164,33 @@ def main() -> None:
         indicator_data.get("worldbank_population", pd.DataFrame()), selected
     )
     cpi_value, cpi_year = latest_value_for_country(
-        indicator_data.get("cpi_2023", pd.DataFrame()), selected
+        indicator_data.get("cpi", pd.DataFrame()), selected
     )
     fsi_value, fsi_year = latest_value_for_country(
-        indicator_data.get("fsi_2023", pd.DataFrame()), selected
+        indicator_data.get("fsi", pd.DataFrame()), selected
     )
 
     col_gdp, col_pop, col_cpi, col_fsi = st.columns(4)
     gdp_label = f"PIB ({gdp_year})" if gdp_year else "PIB"
     pop_label = f"Poblacion ({pop_year})" if pop_year else "Poblacion"
-    cpi_label = f"CPI score {cpi_year}" if cpi_year else "CPI score 2023"
+    cpi_label = f"CPI score {cpi_year}" if cpi_year else "CPI score"
     fsi_label = (
         f"Indice de fragilidad (Rank {fsi_year})"
         if fsi_year
         else "Indice de fragilidad (Rank)"
     )
 
-    col_gdp.metric(gdp_label, gdp_value if gdp_value is not None else "N/A")
-    col_pop.metric(pop_label, pop_value if pop_value is not None else "N/A")
-    col_cpi.metric(cpi_label, cpi_value if cpi_value is not None else "N/A")
-    col_fsi.metric(fsi_label, fsi_value if fsi_value is not None else "N/A")
+    def _metric_value(value: object) -> str | object:
+        if value is None:
+            return "N/A"
+        if isinstance(value, float) and pd.isna(value):
+            return "N/A"
+        return value
+
+    col_gdp.metric(gdp_label, _metric_value(gdp_value))
+    col_pop.metric(pop_label, _metric_value(pop_value))
+    col_cpi.metric(cpi_label, _metric_value(cpi_value))
+    col_fsi.metric(fsi_label, _metric_value(fsi_value))
 
     if mode.startswith("Country indicators"):
         choice = st.sidebar.selectbox("Dataset", list(indicator_map.keys()))
@@ -193,7 +200,7 @@ def main() -> None:
 
         st.subheader(choice)
         st.write(f"Rows: {len(filtered)}")
-        st.dataframe(filtered, use_container_width=True)
+        st.dataframe(filtered.fillna("N/A"), use_container_width=True)
 
     else:
         dep_ids = _fetch_dep_ids(selected)
@@ -217,7 +224,7 @@ def main() -> None:
             filtered = _fetch_mrds_table(table_map[table_choice], dep_ids)
 
         st.write(f"Rows: {len(filtered)}")
-        st.dataframe(filtered.head(500), use_container_width=True)
+        st.dataframe(filtered.head(500).fillna("N/A"), use_container_width=True)
         st.caption("Showing first 500 rows for performance.")
 
         st.markdown("---")
@@ -228,7 +235,7 @@ def main() -> None:
             clean_join = _fetch_clean_join(dep_ids)
 
         st.write(f"Rows after inner join: {len(clean_join)}")
-        st.dataframe(clean_join, use_container_width=True)
+        st.dataframe(clean_join.fillna("N/A"), use_container_width=True)
 
 
 if __name__ == "__main__":

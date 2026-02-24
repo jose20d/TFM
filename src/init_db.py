@@ -22,6 +22,13 @@ def initialize_schema() -> None:
 
     with get_connection() as conn:
         with conn.cursor() as cur:
+            # Preflight check: PostGIS must already be enabled by an admin.
+            cur.execute("SELECT 1 FROM pg_extension WHERE extname = 'postgis'")
+            if cur.fetchone() is None:
+                raise RuntimeError(
+                    "PostGIS is installed but not enabled in this database. "
+                    "Connect as admin and run: CREATE EXTENSION postgis; then rerun."
+                )
             cur.execute(_read_sql(schema_path))
             cur.execute(_read_sql(indexes_path))
         conn.commit()

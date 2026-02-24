@@ -5,6 +5,7 @@ import argparse
 import json
 import sys
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,17 @@ def read_config(path: Path) -> dict[str, Any]:
 
 def safe_filename(name: str) -> str:
     return name.replace("/", "_").replace("\\", "_")
+
+
+def _is_ooxml_strict_xlsx(path: Path) -> bool:
+    if path.suffix.lower() != ".xlsx":
+        return False
+    try:
+        with zipfile.ZipFile(path) as zf:
+            data = zf.read("xl/workbook.xml")
+    except Exception:
+        return False
+    return b"http://purl.oclc.org/ooxml/spreadsheetml/main" in data
 
 
 def download_file(url: str, dest: Path, timeout: int, retries: int) -> None:
@@ -118,6 +130,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if wanted and ds_id not in wanted:
             continue
+        if ds.get("download") is False:
+            print(f"[skip] {ds_id}: download disabled in config")
+            continue
 
         url = ds.get("url")
         filename = ds.get("output_filename") or f"{ds_id}.bin"
@@ -125,11 +140,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[skip] {ds_id}: missing url", file=sys.stderr)
             continue
 
-        dest_dir = out_root / ds_id
+        output_dir = ds.get("output_dir") or ds_id
+        dest_dir = out_root / str(output_dir)
         dest = dest_dir / safe_filename(str(filename))
         if dest.exists() and not args.overwrite:
-            print(f"[skip] {ds_id}: already exists -> {dest}")
-            continue
+            if ds_id.startswith("cpi") and _is_ooxml_strict_xlsx(dest):
+                print(f"[warn] {ds_id}: existing file is OOXML strict; redownloading")
+            else:
+                print(f"[skip] {ds_id}: already exists -> {dest}")
+                continue
 
         print(f"[download] {ds_id} -> {dest}")
         try:

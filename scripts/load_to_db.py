@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -41,13 +45,39 @@ WORLD_BANK_AGGREGATES = {
     "Euro area",
 }
 
+# Non-country labels sometimes appear in raw sources (regions or aggregates).
+# These should be excluded to keep the country dimension clean and consistent.
+NON_COUNTRY_LABELS = WORLD_BANK_AGGREGATES | {
+    "Middle East",
+    "North Africa",
+    "West Africa",
+    "East Africa",
+    "Central Africa",
+    "Southern Africa",
+    "North America",
+    "South America",
+    "Central America",
+    "Caribbean",
+    "Europe",
+    "Eastern Europe",
+    "Western Europe",
+    "Northern Europe",
+    "Southern Europe",
+    "Asia",
+    "East Asia",
+    "South Asia",
+    "Southeast Asia",
+    "Central Asia",
+    "Oceania",
+}
+
 # Indicator codes used for database normalization.
 # This keeps a stable, queryable identifier in the relational layer.
 INDICATOR_CODES = {
     "worldbank_gdp": "NY.GDP.MKTP.CD",
     "worldbank_population": "SP.POP.TOTL",
-    "fsi_2023": "RANK",
-    "cpi_2023": "CPI_2023",
+    "fsi": "RANK",
+    "cpi": "CPI",
 }
 
 
@@ -61,7 +91,57 @@ def _dataset_path(cfg: dict[str, Any], dataset_id: str, raw_dir: Path) -> Path |
         if ds.get("id") == dataset_id:
             filename = ds.get("output_filename")
             if filename:
-                return raw_dir / dataset_id / str(filename)
+                output_dir = ds.get("output_dir") or dataset_id
+                return raw_dir / str(output_dir) / str(filename)
+    return None
+
+
+def _dataset_entry(cfg: dict[str, Any], dataset_id: str) -> dict[str, Any] | None:
+    for ds in cfg.get("datasets") or []:
+        if ds.get("id") == dataset_id:
+            return ds
+    return None
+
+
+def _infer_year_from_text(text: str | None) -> int | None:
+    if not text:
+        return None
+    match = re.search(r"(19|20)\d{2}", text)
+    if not match:
+        return None
+    try:
+        return int(match.group(0))
+    except ValueError:
+        return None
+
+
+def _infer_year_from_dataset(ds: dict[str, Any] | None, raw_path: Path | None) -> int | None:
+    candidates: list[str] = []
+    if raw_path:
+        candidates.extend([raw_path.name, raw_path.parent.name])
+    if ds:
+        candidates.extend(
+            [
+                str(ds.get("output_filename") or ""),
+                str(ds.get("url") or ""),
+                str(ds.get("name") or ""),
+                str(ds.get("id") or ""),
+            ]
+        )
+    for item in candidates:
+        year = _infer_year_from_text(item)
+        if year:
+            return year
+    return None
+
+
+def _legacy_fsi_path(raw_dir: Path) -> Path | None:
+    legacy_dir = raw_dir / "fsi_2023"
+    if not legacy_dir.exists():
+        return None
+    for candidate in legacy_dir.iterdir():
+        if candidate.is_file() and candidate.suffix.lower() in {".xlsx", ".xls"}:
+            return candidate
     return None
 
 
@@ -96,7 +176,9 @@ def _load_worldbank_rows(
         if not isinstance(country, str) or not country.strip():
             continue
         country = country.strip()
-        if country in WORLD_BANK_AGGREGATES:
+        if country in NON_COUNTRY_LABELS:
+            continue
+        if not iso3 or not isinstance(iso3, str) or len(iso3.strip()) != 3:
             continue
         rows.append(
             {
@@ -109,70 +191,196 @@ def _load_worldbank_rows(
                 "value": value,
             }
         )
-    return rows
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return []
+    df["value"] = pd.to_numeric(df["value"], errors="coerce").round(0)
+    df["value"] = df["value"].astype("Int64")
+    df = df[df["value"].notna() & (df["value"] > 0)]
+    df = df[df["year"].notna()]
+    df["year"] = df["year"].astype(int)
+    # Keep the latest available year per ISO3 code.
+    df = df.sort_values(["iso3", "year"]).drop_duplicates(subset=["iso3"], keep="last")
+    return df.to_dict(orient="records")
 
 
-def _load_fsi_rows(raw_path: Path, aliases: dict[str, str]) -> list[dict[str, Any]]:
-    df = pd.read_excel(raw_path, usecols=["Country", "Rank"])
+def _load_fsi_rows(
+    raw_path: Path,
+    aliases: dict[str, str],
+    *,
+    dataset_id: str,
+    year_hint: int | None,
+) -> list[dict[str, Any]]:
+    df = pd.read_excel(raw_path)
+    if "Country" not in df.columns or "Rank" not in df.columns:
+        return []
     df = df.rename(columns={"Country": "country", "Rank": "value"})
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df[df["value"].notna()]
+
+    year_col = "Year" if "Year" in df.columns else None
+    if year_col:
+        df["year"] = pd.to_numeric(df[year_col], errors="coerce")
+        df = df[df["year"].notna()]
+        df["year"] = df["year"].astype(int)
+        df = df.sort_values(["country", "year"]).drop_duplicates(subset=["country"], keep="last")
+    else:
+        if year_hint is None:
+            print("[warn] fsi: Year column missing and no year hint; skipping", file=sys.stderr)
+            return []
+        # Treat as latest snapshot when no year column is present.
+        df["year"] = year_hint
+
     rows: list[dict[str, Any]] = []
     for _, row in df.iterrows():
         country = row.get("country")
         if not isinstance(country, str) or not country.strip():
             continue
         country = country.strip()
-        if country in WORLD_BANK_AGGREGATES:
+        if country in NON_COUNTRY_LABELS:
             continue
         rows.append(
             {
-                "dataset_id": "fsi_2023",
-                "indicator_code": INDICATOR_CODES.get("fsi_2023"),
+                "dataset_id": dataset_id,
+                "indicator_code": INDICATOR_CODES.get(dataset_id),
                 "country": country,
                 "country_norm": _norm_country(country, aliases),
                 "iso3": None,
-                "year": 2023,
+                "year": int(row.get("year")) if row.get("year") else None,
                 "value": row.get("value"),
             }
         )
     return rows
 
 
-def _load_cpi_rows(raw_path: Path, aliases: dict[str, str]) -> list[dict[str, Any]]:
-    df = pd.read_excel(
-        raw_path,
-        header=3,
-        usecols=["Country / Territory", "ISO3", "CPI score 2023"],
-    )
-    df = df.rename(
-        columns={
-            "Country / Territory": "country",
-            "ISO3": "iso3",
-            "CPI score 2023": "value",
-        }
-    )
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
-    rows: list[dict[str, Any]] = []
-    for _, row in df.iterrows():
-        country = row.get("country")
-        if not isinstance(country, str) or not country.strip():
-            continue
-        country = country.strip()
-        if country in WORLD_BANK_AGGREGATES:
-            continue
-        iso3 = row.get("iso3")
-        rows.append(
-            {
-                "dataset_id": "cpi_2023",
-                "indicator_code": INDICATOR_CODES.get("cpi_2023"),
-                "country": country,
-                "country_norm": _norm_country(country, aliases),
-                "iso3": _norm_iso3(iso3),
-                "year": 2023,
-                "value": row.get("value"),
-            }
-        )
-    return rows
+STRICT_XML_MAP = {
+    b"http://purl.oclc.org/ooxml/spreadsheetml/main": b"http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+    b"http://purl.oclc.org/ooxml/officeDocument/relationships": b"http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    b"http://purl.oclc.org/ooxml/drawingml/main": b"http://schemas.openxmlformats.org/drawingml/2006/main",
+    b"http://purl.oclc.org/ooxml/drawingml/chart": b"http://schemas.openxmlformats.org/drawingml/2006/chart",
+    b"http://purl.oclc.org/ooxml/drawingml/diagram": b"http://schemas.openxmlformats.org/drawingml/2006/diagram",
+    b"http://purl.oclc.org/ooxml/drawingml/chartDrawing": b"http://schemas.openxmlformats.org/drawingml/2006/chartDrawing",
+}
+
+
+def _is_strict_ooxml_xlsx(path: Path) -> bool:
+    if path.suffix.lower() != ".xlsx":
+        return False
+    try:
+        with zipfile.ZipFile(path) as zf:
+            data = zf.read("xl/workbook.xml")
+    except Exception:
+        return False
+    return b"purl.oclc.org/ooxml/spreadsheetml/main" in data
+
+
+def _rewrite_strict_xlsx(src: Path, dest: Path) -> None:
+    with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(dest, "w") as zout:
+        for info in zin.infolist():
+            payload = zin.read(info.filename)
+            if info.filename.endswith(".xml"):
+                for old, new in STRICT_XML_MAP.items():
+                    payload = payload.replace(old, new)
+            zout.writestr(info, payload)
+
+
+def _prepare_cpi_workbook(path: Path) -> tuple[Path, callable]:
+    """
+    CPI 2025 is a strict OOXML file that openpyxl can't read directly.
+    If detected, rewrite namespaces into a temp workbook for parsing.
+    """
+    if not _is_strict_ooxml_xlsx(path):
+        return path, lambda: None
+    fd, tmp_name = tempfile.mkstemp(prefix="cpi_ooxml_", suffix=".xlsx")
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+    _rewrite_strict_xlsx(path, tmp_path)
+    return tmp_path, lambda: tmp_path.unlink(missing_ok=True)
+
+
+def _load_cpi_rows(
+    raw_path: Path,
+    aliases: dict[str, str],
+    *,
+    dataset_id: str,
+    year_hint: int | None,
+) -> list[dict[str, Any]]:
+    workbook_path, cleanup = _prepare_cpi_workbook(raw_path)
+    try:
+        # CPI files can shift the header row; detect it dynamically.
+        dataset_label = dataset_id
+        try:
+            preview = pd.read_excel(workbook_path, header=None, nrows=10)
+        except Exception as exc:
+            print(f"[warn] {dataset_label}: failed to read workbook ({exc}); skipping", file=sys.stderr)
+            return []
+        header_idx = None
+        for idx, row in preview.iterrows():
+            values = {str(v).strip().lower() for v in row.values if isinstance(v, str)}
+            has_country = bool({"country / territory", "country/territory"} & values)
+            has_score = any(("cpi" in v and "score" in v) for v in values)
+            if has_country and has_score:
+                header_idx = idx
+                break
+        if header_idx is None:
+            print(f"[warn] {dataset_label}: header row not found; skipping", file=sys.stderr)
+            return []
+
+        try:
+            df = pd.read_excel(workbook_path, header=header_idx)
+        except Exception as exc:
+            print(f"[warn] {dataset_label}: failed to read sheet ({exc}); skipping", file=sys.stderr)
+            return []
+        df.columns = [str(c).strip() for c in df.columns]
+        col_map: dict[str, str] = {}
+        score_year = None
+        for col in df.columns:
+            key = col.strip().lower()
+            if key in {"country / territory", "country/territory"}:
+                col_map[col] = "country"
+            elif key == "iso3":
+                col_map[col] = "iso3"
+            elif "cpi" in key and "score" in key:
+                col_map[col] = "value"
+                if score_year is None:
+                    score_year = _infer_year_from_text(key)
+
+        df = df.rename(columns=col_map)
+        if "country" not in df.columns or "value" not in df.columns:
+            print(f"[warn] {dataset_label}: required columns missing; skipping", file=sys.stderr)
+            return []
+
+        year = score_year or year_hint
+        if year is None:
+            print(f"[warn] {dataset_label}: year not detected; skipping", file=sys.stderr)
+            return []
+
+        df["value"] = pd.to_numeric(df["value"], errors="coerce").round(0)
+        df["value"] = df["value"].astype("Int64")
+        df = df[df["value"].between(0, 100)]
+        rows: list[dict[str, Any]] = []
+        for _, row in df.iterrows():
+            country = row.get("country")
+            if not isinstance(country, str) or not country.strip():
+                continue
+            country = country.strip()
+            if country in NON_COUNTRY_LABELS:
+                continue
+            iso3 = row.get("iso3")
+            rows.append(
+                {
+                    "dataset_id": dataset_id,
+                    "indicator_code": INDICATOR_CODES.get(dataset_id),
+                    "country": country,
+                    "country_norm": _norm_country(country, aliases),
+                    "iso3": _norm_iso3(iso3),
+                    "year": year,
+                    "value": row.get("value"),
+                }
+            )
+        return rows
+    finally:
+        cleanup()
 
 
 def _file_hash(path: Path) -> str | None:
@@ -221,15 +429,45 @@ def _log_etl(
     )
 
 
+def _print_sanity_checks(conn) -> None:
+    """
+    Print basic row counts to validate the load quickly.
+    """
+    with conn.cursor() as cur:
+        checks = [
+            ("dataset_config", "SELECT COUNT(*) FROM dataset_config"),
+            ("etl_load_log", "SELECT COUNT(*) FROM etl_load_log"),
+            ("dim_country", "SELECT COUNT(*) FROM dim_country"),
+            ("mrds_deposit", "SELECT COUNT(*) FROM mrds_deposit"),
+            ("country_indicator", "SELECT COUNT(*) FROM country_indicator"),
+        ]
+        for label, sql in checks:
+            cur.execute(sql)
+            count = cur.fetchone()[0]
+            print(f"[sanity] {label}: {count}")
+
+        cur.execute(
+            "SELECT dataset_id, COUNT(*) FROM country_indicator GROUP BY dataset_id ORDER BY dataset_id"
+        )
+        for dataset_id, count in cur.fetchall():
+            print(f"[sanity] country_indicator[{dataset_id}]: {count}")
+
+
 def _load_mrds_location(path: Path, aliases: dict[str, str]) -> pd.DataFrame:
     df = _read_mrds_table(path, usecols=["dep_id", "country", "state_prov", "region", "county"])
     df = df[df["country"].notna()]
     df["country"] = df["country"].astype(str).str.strip()
     invalid_countries = {"AF", "EU", "AS", "OC", "SA", "CR"}
     df = df[~df["country"].isin(invalid_countries)]
+    df = df[~df["country"].isin(NON_COUNTRY_LABELS)]
     df = df[df["country"] != ""]
     df["country_norm"] = df["country"].apply(normalize_country_name)
     df["country_norm"] = df["country_norm"].map(lambda x: aliases.get(x, x))
+    # Replace blanks in location columns to keep consistent reporting.
+    for col in ["state_prov", "region", "county"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+            df.loc[df[col].isin(["", "nan", "None"]), col] = "N/A"
     return df
 
 
@@ -253,7 +491,21 @@ def _read_mrds_table(path: Path, usecols: list[str]) -> pd.DataFrame:
     Tab-delimited .txt files are used in the rdbms-tab-all archive.
     """
     delimiter = "\t" if path.suffix.lower() == ".txt" else ","
-    return pd.read_csv(path, usecols=usecols, sep=delimiter)
+    header = pd.read_csv(path, sep=delimiter, nrows=0, low_memory=False)
+    available = set(header.columns)
+    cols = [c for c in usecols if c in available]
+    df = pd.read_csv(path, usecols=cols, sep=delimiter, low_memory=False)
+    for missing in (set(usecols) - set(cols)):
+        df[missing] = None
+    return df[usecols]
+
+
+def _strip_text_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    for col in columns:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+            df.loc[df[col].isin(["", "nan", "None"]), col] = None
+    return df
 
 
 def _dedupe_countries(
@@ -314,19 +566,54 @@ def _insert_dataset_config(cur, cfg: dict[str, Any]) -> None:
     execute_values(cur, sql, rows)
 
 
-def _ensure_dataset_config_seed(cur) -> None:
+def _ensure_dataset_config_seed(cur, cfg: dict[str, Any]) -> None:
     """
-    Seed dataset_config if the table is empty to avoid first-run failures.
+    Ensure dataset_config contains all dataset_ids referenced by the ETL.
+    Seed a baseline list if the table is empty, then upsert from config.
     """
     cur.execute("SELECT COUNT(*) FROM dataset_config")
     count = cur.fetchone()[0]
-    if count and count > 0:
-        return
-
     seed_path = REPO_ROOT / "database" / "seed_dataset_config.sql"
-    if not seed_path.exists():
+    if count == 0 and seed_path.exists():
+        cur.execute(seed_path.read_text(encoding="utf-8"))
+
+    existing = set()
+    cur.execute("SELECT dataset_id FROM dataset_config")
+    for row in cur.fetchall():
+        existing.add(row[0])
+
+    missing = []
+    for ds in cfg.get("datasets") or []:
+        if ds.get("id") not in existing:
+            missing.append(ds.get("id"))
+    if missing:
+        _insert_dataset_config(cur, cfg)
+
+
+def _normalize_dataset_ids(cur) -> None:
+    cur.execute("SELECT dataset_id FROM dataset_config")
+    existing = {row[0] for row in cur.fetchall()}
+    if "fsi_2023" not in existing:
         return
-    cur.execute(seed_path.read_text(encoding="utf-8"))
+    if "fsi" not in existing:
+        # Ensure target id exists (will be updated by config upsert afterward).
+        cur.execute(
+            """
+            INSERT INTO dataset_config (dataset_id, source_name, source_url, format, update_frequency)
+            VALUES ('fsi', 'Fragile States Index', 'https://fragilestatesindex.org/', 'xlsx', 'annual')
+            ON CONFLICT (dataset_id) DO NOTHING
+            """
+        )
+        existing.add("fsi")
+
+    # Update references first to satisfy FK constraints.
+    cur.execute("UPDATE country_indicator SET dataset_id = 'fsi' WHERE dataset_id = 'fsi_2023'")
+    cur.execute("UPDATE etl_load_log SET dataset_id = 'fsi' WHERE dataset_id = 'fsi_2023'")
+
+    if "fsi" in existing:
+        cur.execute("DELETE FROM dataset_config WHERE dataset_id = 'fsi_2023'")
+    else:
+        cur.execute("UPDATE dataset_config SET dataset_id = 'fsi' WHERE dataset_id = 'fsi_2023'")
 
 
 def main() -> int:
@@ -348,8 +635,9 @@ def main() -> int:
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            _ensure_dataset_config_seed(cur)
+            _ensure_dataset_config_seed(cur, cfg)
             _insert_dataset_config(cur, cfg)
+            _normalize_dataset_ids(cur)
 
             # Countries from MRDS Location
             loc_path = _resolve_mrds_file(mrds_extract, "Location")
@@ -364,13 +652,29 @@ def main() -> int:
 
             gdp_path = _dataset_path(cfg, "worldbank_gdp", raw_dir)
             pop_path = _dataset_path(cfg, "worldbank_population", raw_dir)
-            fsi_path = _dataset_path(cfg, "fsi_2023", raw_dir)
-            cpi_path = _dataset_path(cfg, "cpi_2023", raw_dir)
+            fsi_entry = _dataset_entry(cfg, "fsi")
+            fsi_path = _dataset_path(cfg, "fsi", raw_dir)
+            if not fsi_path or not fsi_path.exists():
+                legacy_path = _legacy_fsi_path(raw_dir)
+                if legacy_path:
+                    fsi_path = legacy_path
+            cpi_entry = _dataset_entry(cfg, "cpi")
+            cpi_path = _dataset_path(cfg, "cpi", raw_dir)
 
             gdp_rows = _load_worldbank_rows(gdp_path, "worldbank_gdp", aliases) if gdp_path and gdp_path.exists() else []
             pop_rows = _load_worldbank_rows(pop_path, "worldbank_population", aliases) if pop_path and pop_path.exists() else []
-            fsi_rows = _load_fsi_rows(fsi_path, aliases) if fsi_path and fsi_path.exists() else []
-            cpi_rows = _load_cpi_rows(cpi_path, aliases) if cpi_path and cpi_path.exists() else []
+            fsi_year_hint = _infer_year_from_dataset(fsi_entry, fsi_path)
+            fsi_rows = (
+                _load_fsi_rows(fsi_path, aliases, dataset_id="fsi", year_hint=fsi_year_hint)
+                if fsi_path and fsi_path.exists()
+                else []
+            )
+            cpi_year_hint = _infer_year_from_dataset(cpi_entry, cpi_path)
+            cpi_rows = (
+                _load_cpi_rows(cpi_path, aliases, dataset_id="cpi", year_hint=cpi_year_hint)
+                if cpi_path and cpi_path.exists()
+                else []
+            )
 
             for rows in (gdp_rows, pop_rows, fsi_rows, cpi_rows):
                 if rows:
@@ -384,6 +688,7 @@ def main() -> int:
             # MRDS deposit
             mrds_path = _resolve_mrds_file(mrds_extract, "MRDS")
             mrds_inserted = 0
+            valid_dep_ids: set[int] = set()
             if mrds_path and mrds_path.exists():
                 df = _read_mrds_table(
                     mrds_path,
@@ -391,8 +696,10 @@ def main() -> int:
                 )
                 df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
                 df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
-                df = df[df["latitude"].between(-90, 90) & df["longitude"].between(-180, 180)]
+                df = df[df["dep_id"].notna()]
+                df["dep_id"] = df["dep_id"].astype(int)
                 mrds_inserted = len(df)
+                valid_dep_ids = set(df["dep_id"].tolist())
                 rows = [
                     (
                         int(r.dep_id),
@@ -426,7 +733,9 @@ def main() -> int:
                             code_list,
                             lat,
                             lon,
-                            f"SRID=4326;POINT({lon} {lat})",
+                            f"SRID=4326;POINT({lon} {lat})"
+                            if pd.notna(lat) and pd.notna(lon)
+                            else None,
                         )
                         for dep_id, name, dev_stat, code_list, lat, lon in rows
                     ],
@@ -435,7 +744,12 @@ def main() -> int:
 
             # MRDS location
             if not location_df.empty:
+                # Ensure locations only reference deposits we loaded.
+                if valid_dep_ids:
+                    location_df = location_df[location_df["dep_id"].astype(int).isin(valid_dep_ids)]
                 location_df["country_id"] = location_df["country_norm"].map(country_map)
+                # MRDS Location can contain repeated dep_id rows; keep one per deposit.
+                location_df = location_df.drop_duplicates(subset=["dep_id"])
                 rows = [
                     (
                         int(r.dep_id),
@@ -489,6 +803,23 @@ def main() -> int:
                 if not path or not path.exists():
                     continue
                 df = _read_mrds_table(path, usecols=cols)
+                if name == "Materials" and "ore_gangue" not in df.columns:
+                    # Some MRDS exports use "ore_gauge"; normalize to ore_gangue.
+                    alt = _read_mrds_table(path, usecols=["dep_id", "rec", "ore_gauge", "material"])
+                    if "ore_gauge" in alt.columns:
+                        alt = alt.rename(columns={"ore_gauge": "ore_gangue"})
+                        df = alt[cols]
+                if name == "Rocks":
+                    for col in ["first_ord_nm", "second_ord_nm", "third_ord_nm"]:
+                        if col in df.columns:
+                            df[col] = df[col].astype(str).str.strip()
+                            df.loc[df[col].isin(["", "nan", "None"]), col] = "N/A"
+                text_cols = [c for c in cols if c != "dep_id"]
+                df = _strip_text_columns(df, text_cols)
+                if "dep_id" in df.columns and valid_dep_ids:
+                    df = df[df["dep_id"].astype(int).isin(valid_dep_ids)]
+                if df.empty:
+                    continue
                 rows = [tuple(r) for r in df.itertuples(index=False)]
                 sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES %s"
                 execute_values(cur, sql, rows)
@@ -515,6 +846,13 @@ def main() -> int:
                         r.get("value"),
                     )
                 )
+            # Deduplicate within the batch to avoid ON CONFLICT double-hit errors.
+            unique_rows: dict[tuple[int, str, str | None, int], tuple] = {}
+            for row in rows:
+                key = (row[0], row[1], row[2], row[3])
+                if key not in unique_rows:
+                    unique_rows[key] = row
+            rows = list(unique_rows.values())
             sql = """
                 INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value)
                 VALUES %s
@@ -527,8 +865,8 @@ def main() -> int:
             for ds_id, path, count in [
                 ("worldbank_gdp", gdp_path, len(gdp_rows)),
                 ("worldbank_population", pop_path, len(pop_rows)),
-                ("fsi_2023", fsi_path, len(fsi_rows)),
-                ("cpi_2023", cpi_path, len(cpi_rows)),
+                ("fsi", fsi_path, len(fsi_rows)),
+                ("cpi", cpi_path, len(cpi_rows)),
                 ("mrds_csv", mrds_path, mrds_inserted),
             ]:
                 status = "SUCCESS" if path and path.exists() else "FAILED"
@@ -543,6 +881,7 @@ def main() -> int:
                 )
 
         conn.commit()
+        _print_sanity_checks(conn)
 
     return 0
 
