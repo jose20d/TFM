@@ -5,7 +5,6 @@ import pandas as pd
 import streamlit as st
 
 from src.db import get_connection
-
 # The UI reads from PostgreSQL to keep a single source of truth
 # and avoid intermediate JSON files in the presentation layer.
 
@@ -40,10 +39,11 @@ def _fetch_countries() -> pd.DataFrame:
     # The UI reads from PostgreSQL to avoid intermediate JSON files.
     try:
         with get_connection() as conn:
-            return pd.read_sql_query(
+            df = pd.read_sql_query(
                 "SELECT country_norm, country_name FROM dim_country ORDER BY country_name",
                 conn,
             )
+        return df
     except Exception as exc:
         st.error(
             "Database is not initialized. Run `python3 main.py` after enabling PostGIS.",

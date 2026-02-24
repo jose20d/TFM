@@ -32,6 +32,13 @@
       "url": "https://files.transparencycdn.org/images/CPI2025_Results.xlsx",
       "output_filename": "CPI2025_Results.xlsx",
       "output_dir": "cpi"
+    },
+    {
+      "id": "iso_country_codes",
+      "name": "ISO 3166-1 country codes",
+      "url": "https://datahub.io/core/country-codes/r/country-codes.csv",
+      "output_filename": "country-codes.csv",
+      "output_dir": "iso"
     }
   ]
 }

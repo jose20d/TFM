@@ -38,5 +38,11 @@ INSERT INTO dataset_config (
  'https://www.transparency.org/en/cpi',
  'xlsx',
  'annual',
+ TRUE),
+('iso_country_codes',
+ 'ISO 3166-1 country codes',
+ 'https://datahub.io/core/country-codes',
+ 'csv',
+ 'annual',
  TRUE)
 ON CONFLICT (dataset_id) DO NOTHING;

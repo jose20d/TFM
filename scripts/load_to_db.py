@@ -25,52 +25,6 @@ from src.db import get_connection
 from src.init_db import initialize_schema
 
 
-WORLD_BANK_AGGREGATES = {
-    "Africa Eastern and Southern",
-    "Africa Western and Central",
-    "Arab World",
-    "East Asia & Pacific",
-    "Europe & Central Asia",
-    "Latin America & Caribbean",
-    "Middle East & North Africa",
-    "North America",
-    "South Asia",
-    "Sub-Saharan Africa",
-    "World",
-    "High income",
-    "Upper middle income",
-    "Lower middle income",
-    "Low income",
-    "OECD members",
-    "Euro area",
-}
-
-# Non-country labels sometimes appear in raw sources (regions or aggregates).
-# These should be excluded to keep the country dimension clean and consistent.
-NON_COUNTRY_LABELS = WORLD_BANK_AGGREGATES | {
-    "Middle East",
-    "North Africa",
-    "West Africa",
-    "East Africa",
-    "Central Africa",
-    "Southern Africa",
-    "North America",
-    "South America",
-    "Central America",
-    "Caribbean",
-    "Europe",
-    "Eastern Europe",
-    "Western Europe",
-    "Northern Europe",
-    "Southern Europe",
-    "Asia",
-    "East Asia",
-    "South Asia",
-    "Southeast Asia",
-    "Central Asia",
-    "Oceania",
-}
-
 # Indicator codes used for database normalization.
 # This keeps a stable, queryable identifier in the relational layer.
 INDICATOR_CODES = {
@@ -176,8 +130,6 @@ def _load_worldbank_rows(
         if not isinstance(country, str) or not country.strip():
             continue
         country = country.strip()
-        if country in NON_COUNTRY_LABELS:
-            continue
         if not iso3 or not isinstance(iso3, str) or len(iso3.strip()) != 3:
             continue
         rows.append(
@@ -204,6 +156,96 @@ def _load_worldbank_rows(
     return df.to_dict(orient="records")
 
 
+def _read_iso_country_codes(
+    path: Path, aliases: dict[str, str]
+) -> tuple[pd.DataFrame, set[str], set[str]]:
+    """
+    Load ISO 3166-1 country codes (Alpha-3) and normalized country names.
+    Returns a normalized dataframe plus lookup sets for filtering.
+    """
+    df = pd.read_csv(path)
+    cols = {c.lower(): c for c in df.columns}
+    name_col = cols.get("cldr display name") or cols.get("name") or cols.get("official name en")
+    iso3_col = cols.get("iso3166-1-alpha-3") or cols.get("iso3166-1-alpha-3 code") or cols.get("alpha-3")
+    iso2_col = cols.get("iso3166-1-alpha-2") or cols.get("iso3166-1-alpha-2 code") or cols.get("alpha-2")
+    iso_num_col = cols.get("iso3166-1-numeric") or cols.get("iso3166-1-numeric code") or cols.get("numeric")
+    if not name_col or not iso3_col:
+        return pd.DataFrame(), set(), set()
+
+    out_rows = []
+    iso3_set: set[str] = set()
+    name_set: set[str] = set()
+    for _, row in df.iterrows():
+        name = row.get(name_col)
+        iso3 = row.get(iso3_col)
+        if not isinstance(name, str) or not isinstance(iso3, str):
+            continue
+        name_norm = normalize_country_name(name)
+        name_norm = aliases.get(name_norm, name_norm)
+        iso3_norm = normalize_iso3(iso3)
+        iso2 = row.get(iso2_col) if iso2_col else None
+        iso_num = row.get(iso_num_col) if iso_num_col else None
+        out_rows.append(
+            {
+                "country_name": name.strip(),
+                "country_norm": name_norm,
+                "iso2": str(iso2).strip().upper() if isinstance(iso2, str) else None,
+                "iso3": iso3_norm,
+                "iso_numeric": str(iso_num).strip() if iso_num is not None else None,
+            }
+        )
+        iso3_set.add(iso3_norm)
+        name_set.add(name_norm)
+
+    df_out = pd.DataFrame(out_rows)
+    if not df_out.empty:
+        df_out = df_out.drop_duplicates(subset=["iso3"])
+    return df_out, iso3_set, name_set
+
+
+def _filter_countries_by_iso(
+    rows: Iterable[tuple[str, str, str | None]],
+    iso3_set: set[str],
+    name_set: set[str],
+) -> list[tuple[str, str, str | None]]:
+    if not iso3_set and not name_set:
+        return list(rows)
+    filtered = []
+    for name, norm, iso3 in rows:
+        if iso3 and normalize_iso3(iso3) in iso3_set:
+            filtered.append((name, norm, iso3))
+            continue
+        if norm and norm in name_set:
+            filtered.append((name, norm, iso3))
+    return filtered
+
+
+def _insert_iso_country_codes(cur, df: pd.DataFrame) -> int:
+    if df.empty:
+        return 0
+    rows = [
+        (
+            r.country_name,
+            r.country_norm,
+            r.iso2,
+            r.iso3,
+            r.iso_numeric,
+        )
+        for r in df.itertuples(index=False)
+    ]
+    sql = """
+        INSERT INTO iso_country_codes (country_name, country_norm, iso2, iso3, iso_numeric)
+        VALUES %s
+        ON CONFLICT (iso3) DO UPDATE
+        SET country_name = EXCLUDED.country_name,
+            country_norm = EXCLUDED.country_norm,
+            iso2 = EXCLUDED.iso2,
+            iso_numeric = EXCLUDED.iso_numeric
+    """
+    execute_values(cur, sql, rows)
+    return len(rows)
+
+
 def _load_fsi_rows(
     raw_path: Path,
     aliases: dict[str, str],
@@ -215,7 +257,13 @@ def _load_fsi_rows(
     if "Country" not in df.columns or "Rank" not in df.columns:
         return []
     df = df.rename(columns={"Country": "country", "Rank": "value"})
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    # Normalize rank values like "144th" to numeric.
+    df["value"] = (
+        df["value"]
+        .astype(str)
+        .str.extract(r"(\d+)", expand=False)
+        .pipe(pd.to_numeric, errors="coerce")
+    )
     df = df[df["value"].notna()]
 
     year_col = "Year" if "Year" in df.columns else None
@@ -237,8 +285,6 @@ def _load_fsi_rows(
         if not isinstance(country, str) or not country.strip():
             continue
         country = country.strip()
-        if country in NON_COUNTRY_LABELS:
-            continue
         rows.append(
             {
                 "dataset_id": dataset_id,
@@ -364,8 +410,6 @@ def _load_cpi_rows(
             if not isinstance(country, str) or not country.strip():
                 continue
             country = country.strip()
-            if country in NON_COUNTRY_LABELS:
-                continue
             iso3 = row.get("iso3")
             rows.append(
                 {
@@ -459,7 +503,6 @@ def _load_mrds_location(path: Path, aliases: dict[str, str]) -> pd.DataFrame:
     df["country"] = df["country"].astype(str).str.strip()
     invalid_countries = {"AF", "EU", "AS", "OC", "SA", "CR"}
     df = df[~df["country"].isin(invalid_countries)]
-    df = df[~df["country"].isin(NON_COUNTRY_LABELS)]
     df = df[df["country"] != ""]
     df["country_norm"] = df["country"].apply(normalize_country_name)
     df["country_norm"] = df["country_norm"].map(lambda x: aliases.get(x, x))
@@ -643,6 +686,15 @@ def main() -> int:
             loc_path = _resolve_mrds_file(mrds_extract, "Location")
             location_df = _load_mrds_location(loc_path, aliases) if loc_path else pd.DataFrame()
 
+            # ISO 3166-1 whitelist (to exclude aggregates from World Bank).
+            iso3_set: set[str] = set()
+            iso_name_set: set[str] = set()
+            iso_rows_inserted = 0
+            iso_path = _dataset_path(cfg, "iso_country_codes", raw_dir)
+            if iso_path and iso_path.exists():
+                iso_df, iso3_set, iso_name_set = _read_iso_country_codes(iso_path, aliases)
+                iso_rows_inserted = _insert_iso_country_codes(cur, iso_df)
+
             # Countries from indicators
             countries = []
             if not location_df.empty:
@@ -682,6 +734,7 @@ def main() -> int:
                         [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
                     )
 
+            countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
             _insert_countries(cur, countries)
             country_map = _country_id_map(cur)
 
@@ -748,12 +801,13 @@ def main() -> int:
                 if valid_dep_ids:
                     location_df = location_df[location_df["dep_id"].astype(int).isin(valid_dep_ids)]
                 location_df["country_id"] = location_df["country_norm"].map(country_map)
+                location_df = location_df[location_df["country_id"].notna()]
                 # MRDS Location can contain repeated dep_id rows; keep one per deposit.
                 location_df = location_df.drop_duplicates(subset=["dep_id"])
                 rows = [
                     (
                         int(r.dep_id),
-                        int(r.country_id) if r.country_id else None,
+                        int(r.country_id),
                         r.state_prov,
                         r.region,
                         r.county,
@@ -863,6 +917,7 @@ def main() -> int:
 
             # ETL audit logs per dataset.
             for ds_id, path, count in [
+                ("iso_country_codes", iso_path, iso_rows_inserted),
                 ("worldbank_gdp", gdp_path, len(gdp_rows)),
                 ("worldbank_population", pop_path, len(pop_rows)),
                 ("fsi", fsi_path, len(fsi_rows)),
