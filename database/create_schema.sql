@@ -31,6 +31,31 @@ CREATE TABLE IF NOT EXISTS etl_load_log (
     load_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- =========================
+-- ETL state and run logs
+-- =========================
+
+CREATE TABLE IF NOT EXISTS etl_dataset_state (
+    dataset_id TEXT PRIMARY KEY,
+    last_hash TEXT,
+    last_loaded_at TIMESTAMP,
+    last_success BOOLEAN
+);
+
+CREATE TABLE IF NOT EXISTS etl_dataset_run_log (
+    id BIGSERIAL PRIMARY KEY,
+    dataset_id TEXT,
+    executed_at TIMESTAMP DEFAULT NOW(),
+    download_success BOOLEAN,
+    hash_value TEXT,
+    has_changes BOOLEAN,
+    load_success BOOLEAN,
+    rows_inserted INTEGER,
+    rows_updated INTEGER,
+    duration_ms INTEGER,
+    error_message TEXT
+);
+
 -- Enforce allowed load statuses.
 DO $$
 BEGIN

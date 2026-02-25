@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+"""Download raw datasets for traceability."""
+
 import argparse
 import json
 import sys
 import time
-import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -19,25 +20,17 @@ else:
 
 
 def read_config(path: Path) -> dict[str, Any]:
+    """Load the JSON datasets configuration."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def safe_filename(name: str) -> str:
+    """Generate a filesystem-safe filename."""
     return name.replace("/", "_").replace("\\", "_")
 
 
-def _is_ooxml_strict_xlsx(path: Path) -> bool:
-    if path.suffix.lower() != ".xlsx":
-        return False
-    try:
-        with zipfile.ZipFile(path) as zf:
-            data = zf.read("xl/workbook.xml")
-    except Exception:
-        return False
-    return b"http://purl.oclc.org/ooxml/spreadsheetml/main" in data
-
-
 def download_file(url: str, dest: Path, timeout: int, retries: int) -> None:
+    """Download a file with retries and streaming writes."""
     if requests is None:
         print(
             f"ERROR: requests is required. {_IMPORT_ERROR}",
@@ -67,6 +60,7 @@ def download_file(url: str, dest: Path, timeout: int, retries: int) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint for downloading raw datasets."""
     p = argparse.ArgumentParser(
         prog="download_datasets",
         description="Download raw datasets for traceability (no processing).",
@@ -84,11 +78,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--ids",
         help="Comma-separated dataset ids to download (optional).",
-    )
-    p.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Overwrite files if they already exist.",
     )
     p.add_argument(
         "--timeout",
@@ -143,13 +132,6 @@ def main(argv: list[str] | None = None) -> int:
         output_dir = ds.get("output_dir") or ds_id
         dest_dir = out_root / str(output_dir)
         dest = dest_dir / safe_filename(str(filename))
-        if dest.exists() and not args.overwrite:
-            if ds_id.startswith("cpi") and _is_ooxml_strict_xlsx(dest):
-                print(f"[warn] {ds_id}: existing file is OOXML strict; redownloading")
-            else:
-                print(f"[skip] {ds_id}: already exists -> {dest}")
-                continue
-
         print(f"[download] {ds_id} -> {dest}")
         try:
             download_file(url, dest, timeout=args.timeout, retries=args.retries)

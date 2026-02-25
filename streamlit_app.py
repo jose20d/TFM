@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+"""Streamlit UI for browsing country indicators and MRDS relations."""
+
 import pandas as pd
 import streamlit as st
 
@@ -10,6 +12,7 @@ from src.db import get_connection
 
 
 def filter_country(df: pd.DataFrame, selected: str) -> pd.DataFrame:
+    """Filter a dataframe to the selected country (normalized or raw)."""
     if "country_norm" in df.columns and selected in df["country_norm"].unique():
         return df[df["country_norm"] == selected]
     if "country" in df.columns:
@@ -18,6 +21,7 @@ def filter_country(df: pd.DataFrame, selected: str) -> pd.DataFrame:
 
 
 def latest_value_for_country(df: pd.DataFrame, selected: str) -> tuple[object | None, int | None]:
+    """Return the latest value and year for a country in a dataset."""
     filtered = filter_country(df, selected)
     if filtered.empty or "value" not in filtered.columns:
         return None, None
@@ -36,6 +40,7 @@ def latest_value_for_country(df: pd.DataFrame, selected: str) -> tuple[object | 
 
 
 def _fetch_countries() -> pd.DataFrame:
+    """Fetch available countries from the database."""
     # The UI reads from PostgreSQL to avoid intermediate JSON files.
     try:
         with get_connection() as conn:
@@ -53,6 +58,7 @@ def _fetch_countries() -> pd.DataFrame:
 
 
 def _fetch_indicator(country_norm: str, dataset_id: str) -> pd.DataFrame:
+    """Fetch indicator rows for a country and dataset."""
     with get_connection() as conn:
         query = """
             SELECT d.dataset_id,
@@ -72,6 +78,7 @@ def _fetch_indicator(country_norm: str, dataset_id: str) -> pd.DataFrame:
 
 
 def _fetch_dep_ids(country_norm: str) -> list[int]:
+    """Fetch MRDS dep_id values associated with a country."""
     with get_connection() as conn:
         df = pd.read_sql_query(
             """
@@ -87,6 +94,7 @@ def _fetch_dep_ids(country_norm: str) -> list[int]:
 
 
 def _fetch_mrds_table(table_name: str, dep_ids: list[int]) -> pd.DataFrame:
+    """Fetch a MRDS table subset for the given dep_id list."""
     if not dep_ids:
         return pd.DataFrame()
     with get_connection() as conn:
@@ -95,6 +103,7 @@ def _fetch_mrds_table(table_name: str, dep_ids: list[int]) -> pd.DataFrame:
 
 
 def _fetch_clean_join(dep_ids: list[int]) -> pd.DataFrame:
+    """Build a unified join across MRDS tables for a small sample."""
     if not dep_ids:
         return pd.DataFrame()
     with get_connection() as conn:
@@ -122,6 +131,7 @@ def _fetch_clean_join(dep_ids: list[int]) -> pd.DataFrame:
 
 
 def main() -> None:
+    """Render the Streamlit UI."""
     st.set_page_config(page_title="TFM Data Explorer", layout="wide")
     st.title("TFM — Data Relationship Explorer (Local)")
     st.caption("Local, no database. Built to validate relationships across datasets.")

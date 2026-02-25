@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+"""ETL pipeline: load raw datasets directly into PostgreSQL."""
+
 import hashlib
 import json
 import os
 import re
 import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 from typing import Any, Iterable
@@ -36,10 +39,12 @@ INDICATOR_CODES = {
 
 
 def _read_config(path: Path) -> dict[str, Any]:
+    """Load the datasets configuration JSON."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _dataset_path(cfg: dict[str, Any], dataset_id: str, raw_dir: Path) -> Path | None:
+    """Resolve a dataset's raw file path from config."""
     datasets = cfg.get("datasets") or []
     for ds in datasets:
         if ds.get("id") == dataset_id:
@@ -51,6 +56,7 @@ def _dataset_path(cfg: dict[str, Any], dataset_id: str, raw_dir: Path) -> Path |
 
 
 def _dataset_entry(cfg: dict[str, Any], dataset_id: str) -> dict[str, Any] | None:
+    """Return the dataset config entry by id."""
     for ds in cfg.get("datasets") or []:
         if ds.get("id") == dataset_id:
             return ds
@@ -58,6 +64,7 @@ def _dataset_entry(cfg: dict[str, Any], dataset_id: str) -> dict[str, Any] | Non
 
 
 def _infer_year_from_text(text: str | None) -> int | None:
+    """Extract a 4-digit year from a string, if present."""
     if not text:
         return None
     match = re.search(r"(19|20)\d{2}", text)
@@ -70,6 +77,7 @@ def _infer_year_from_text(text: str | None) -> int | None:
 
 
 def _infer_year_from_dataset(ds: dict[str, Any] | None, raw_path: Path | None) -> int | None:
+    """Infer a year from dataset metadata or filenames."""
     candidates: list[str] = []
     if raw_path:
         candidates.extend([raw_path.name, raw_path.parent.name])
@@ -90,6 +98,7 @@ def _infer_year_from_dataset(ds: dict[str, Any] | None, raw_path: Path | None) -
 
 
 def _legacy_fsi_path(raw_dir: Path) -> Path | None:
+    """Locate legacy FSI files when dataset ids change."""
     legacy_dir = raw_dir / "fsi_2023"
     if not legacy_dir.exists():
         return None
@@ -100,11 +109,13 @@ def _legacy_fsi_path(raw_dir: Path) -> Path | None:
 
 
 def _norm_country(value: str, aliases: dict[str, str]) -> str:
+    """Normalize country names with alias support."""
     norm = normalize_country_name(value)
     return aliases.get(norm, norm)
 
 
 def _norm_iso3(value: str | None) -> str | None:
+    """Normalize ISO3 codes to uppercase."""
     if not value:
         return None
     text = str(value).strip()
@@ -114,6 +125,7 @@ def _norm_iso3(value: str | None) -> str | None:
 def _load_worldbank_rows(
     raw_path: Path, dataset_id: str, aliases: dict[str, str]
 ) -> list[dict[str, Any]]:
+    """Parse World Bank JSON and return the latest value per ISO3."""
     payload = json.loads(raw_path.read_text(encoding="utf-8"))
     data = payload[1] if isinstance(payload, list) and len(payload) > 1 else payload
     if not isinstance(data, list):
@@ -208,6 +220,7 @@ def _filter_countries_by_iso(
     iso3_set: set[str],
     name_set: set[str],
 ) -> list[tuple[str, str, str | None]]:
+    """Keep only countries present in the ISO 3166-1 whitelist."""
     if not iso3_set and not name_set:
         return list(rows)
     filtered = []
@@ -221,6 +234,7 @@ def _filter_countries_by_iso(
 
 
 def _insert_iso_country_codes(cur, df: pd.DataFrame) -> int:
+    """Insert ISO country reference rows into the database."""
     if df.empty:
         return 0
     rows = [
@@ -253,6 +267,7 @@ def _load_fsi_rows(
     dataset_id: str,
     year_hint: int | None,
 ) -> list[dict[str, Any]]:
+    """Parse the Fragile States Index Excel into normalized rows."""
     df = pd.read_excel(raw_path)
     if "Country" not in df.columns or "Rank" not in df.columns:
         return []
@@ -310,6 +325,7 @@ STRICT_XML_MAP = {
 
 
 def _is_strict_ooxml_xlsx(path: Path) -> bool:
+    """Detect strict OOXML workbooks that need namespace rewriting."""
     if path.suffix.lower() != ".xlsx":
         return False
     try:
@@ -321,6 +337,7 @@ def _is_strict_ooxml_xlsx(path: Path) -> bool:
 
 
 def _rewrite_strict_xlsx(src: Path, dest: Path) -> None:
+    """Rewrite strict OOXML namespaces into standard OOXML."""
     with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(dest, "w") as zout:
         for info in zin.infolist():
             payload = zin.read(info.filename)
@@ -351,6 +368,7 @@ def _load_cpi_rows(
     dataset_id: str,
     year_hint: int | None,
 ) -> list[dict[str, Any]]:
+    """Parse CPI Excel into normalized rows with inferred year."""
     workbook_path, cleanup = _prepare_cpi_workbook(raw_path)
     try:
         # CPI files can shift the header row; detect it dynamically.
@@ -428,6 +446,7 @@ def _load_cpi_rows(
 
 
 def _file_hash(path: Path) -> str | None:
+    """Compute a SHA-256 hash for a file."""
     if not path.exists():
         return None
     h = hashlib.sha256()
@@ -438,7 +457,70 @@ def _file_hash(path: Path) -> str | None:
 
 
 def _file_size(path: Path) -> int | None:
+    """Return file size in bytes if the path exists."""
     return path.stat().st_size if path.exists() else None
+
+
+def _get_dataset_state(cur, dataset_id: str) -> tuple[str | None, bool | None]:
+    """Return the last hash and success flag for a dataset."""
+    cur.execute(
+        "SELECT last_hash, last_success FROM etl_dataset_state WHERE dataset_id = %s",
+        (dataset_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None, None
+    return row[0], row[1]
+
+
+def _upsert_dataset_state(cur, dataset_id: str, hash_value: str, success: bool) -> None:
+    """Insert or update the dataset state after a successful load."""
+    cur.execute(
+        """
+        INSERT INTO etl_dataset_state (dataset_id, last_hash, last_loaded_at, last_success)
+        VALUES (%s, %s, NOW(), %s)
+        ON CONFLICT (dataset_id) DO UPDATE
+        SET last_hash = EXCLUDED.last_hash,
+            last_loaded_at = EXCLUDED.last_loaded_at,
+            last_success = EXCLUDED.last_success
+        """,
+        (dataset_id, hash_value, success),
+    )
+
+
+def _insert_run_log(
+    cur,
+    *,
+    dataset_id: str,
+    download_success: bool,
+    hash_value: str | None,
+    has_changes: bool,
+    load_success: bool,
+    rows_inserted: int,
+    rows_updated: int,
+    duration_ms: int,
+    error_message: str | None,
+) -> None:
+    """Insert a historical ETL run log row."""
+    cur.execute(
+        """
+        INSERT INTO etl_dataset_run_log (
+            dataset_id, download_success, hash_value, has_changes, load_success,
+            rows_inserted, rows_updated, duration_ms, error_message
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            dataset_id,
+            download_success,
+            hash_value,
+            has_changes,
+            load_success,
+            rows_inserted,
+            rows_updated,
+            duration_ms,
+            error_message,
+        ),
+    )
 
 
 def _log_etl(
@@ -450,6 +532,7 @@ def _log_etl(
     status: str,
     error_message: str | None = None,
 ) -> None:
+    """Insert a single ETL audit row."""
     raw_filename = raw_path.name if raw_path else "unknown"
     sql = """
         INSERT INTO etl_load_log (
@@ -498,6 +581,7 @@ def _print_sanity_checks(conn) -> None:
 
 
 def _load_mrds_location(path: Path, aliases: dict[str, str]) -> pd.DataFrame:
+    """Load MRDS Location data and normalize country names."""
     df = _read_mrds_table(path, usecols=["dep_id", "country", "state_prov", "region", "county"])
     df = df[df["country"].notna()]
     df["country"] = df["country"].astype(str).str.strip()
@@ -544,6 +628,7 @@ def _read_mrds_table(path: Path, usecols: list[str]) -> pd.DataFrame:
 
 
 def _strip_text_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Normalize text columns by trimming and nulling empty strings."""
     for col in columns:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
@@ -554,6 +639,7 @@ def _strip_text_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
 def _dedupe_countries(
     rows: Iterable[tuple[str, str, str | None]]
 ) -> list[tuple[str, str, str | None]]:
+    """Deduplicate country rows, preferring ISO3 when available."""
     unique: dict[str, tuple[str, str, str | None]] = {}
     for name, norm, iso3 in rows:
         if not norm:
@@ -568,6 +654,7 @@ def _dedupe_countries(
 
 
 def _insert_countries(cur, rows: Iterable[tuple[str, str, str | None]]) -> None:
+    """Insert countries into dim_country with upsert semantics."""
     rows = _dedupe_countries(rows)
     if not rows:
         return
@@ -581,11 +668,13 @@ def _insert_countries(cur, rows: Iterable[tuple[str, str, str | None]]) -> None:
 
 
 def _country_id_map(cur) -> dict[str, int]:
+    """Build a country_norm → country_id map."""
     cur.execute("SELECT country_id, country_norm FROM dim_country")
     return {row[1]: row[0] for row in cur.fetchall()}
 
 
 def _insert_dataset_config(cur, cfg: dict[str, Any]) -> None:
+    """Upsert dataset configuration metadata."""
     datasets = cfg.get("datasets") or []
     rows = []
     for ds in datasets:
@@ -634,6 +723,7 @@ def _ensure_dataset_config_seed(cur, cfg: dict[str, Any]) -> None:
 
 
 def _normalize_dataset_ids(cur) -> None:
+    """Normalize legacy dataset ids to current ids (e.g., fsi_2023 → fsi)."""
     cur.execute("SELECT dataset_id FROM dataset_config")
     existing = {row[0] for row in cur.fetchall()}
     if "fsi_2023" not in existing:
@@ -660,6 +750,7 @@ def _normalize_dataset_ids(cur) -> None:
 
 
 def main() -> int:
+    """Run the ETL to load all datasets into PostgreSQL."""
     config_path = REPO_ROOT / "configs" / "datasets.json"
     raw_dir = REPO_ROOT / "data" / "raw"
     aliases_path = REPO_ROOT / "references" / "country_aliases.json"
@@ -682,260 +773,395 @@ def main() -> int:
             _insert_dataset_config(cur, cfg)
             _normalize_dataset_ids(cur)
 
-            # Countries from MRDS Location
-            loc_path = _resolve_mrds_file(mrds_extract, "Location")
-            location_df = _load_mrds_location(loc_path, aliases) if loc_path else pd.DataFrame()
-
-            # ISO 3166-1 whitelist (to exclude aggregates from World Bank).
+            iso_path = _dataset_path(cfg, "iso_country_codes", raw_dir)
+            iso_df = pd.DataFrame()
             iso3_set: set[str] = set()
             iso_name_set: set[str] = set()
-            iso_rows_inserted = 0
-            iso_path = _dataset_path(cfg, "iso_country_codes", raw_dir)
             if iso_path and iso_path.exists():
                 iso_df, iso3_set, iso_name_set = _read_iso_country_codes(iso_path, aliases)
-                iso_rows_inserted = _insert_iso_country_codes(cur, iso_df)
 
-            # Countries from indicators
-            countries = []
-            if not location_df.empty:
-                countries.extend(
-                    zip(location_df["country"], location_df["country_norm"], [None] * len(location_df))
-                )
-
-            gdp_path = _dataset_path(cfg, "worldbank_gdp", raw_dir)
-            pop_path = _dataset_path(cfg, "worldbank_population", raw_dir)
-            fsi_entry = _dataset_entry(cfg, "fsi")
-            fsi_path = _dataset_path(cfg, "fsi", raw_dir)
-            if not fsi_path or not fsi_path.exists():
-                legacy_path = _legacy_fsi_path(raw_dir)
-                if legacy_path:
-                    fsi_path = legacy_path
-            cpi_entry = _dataset_entry(cfg, "cpi")
-            cpi_path = _dataset_path(cfg, "cpi", raw_dir)
-
-            gdp_rows = _load_worldbank_rows(gdp_path, "worldbank_gdp", aliases) if gdp_path and gdp_path.exists() else []
-            pop_rows = _load_worldbank_rows(pop_path, "worldbank_population", aliases) if pop_path and pop_path.exists() else []
-            fsi_year_hint = _infer_year_from_dataset(fsi_entry, fsi_path)
-            fsi_rows = (
-                _load_fsi_rows(fsi_path, aliases, dataset_id="fsi", year_hint=fsi_year_hint)
-                if fsi_path and fsi_path.exists()
-                else []
-            )
-            cpi_year_hint = _infer_year_from_dataset(cpi_entry, cpi_path)
-            cpi_rows = (
-                _load_cpi_rows(cpi_path, aliases, dataset_id="cpi", year_hint=cpi_year_hint)
-                if cpi_path and cpi_path.exists()
-                else []
-            )
-
-            for rows in (gdp_rows, pop_rows, fsi_rows, cpi_rows):
-                if rows:
-                    countries.extend(
-                        [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
-                    )
-
-            countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
-            _insert_countries(cur, countries)
-            country_map = _country_id_map(cur)
-
-            # MRDS deposit
-            mrds_path = _resolve_mrds_file(mrds_extract, "MRDS")
-            mrds_inserted = 0
-            valid_dep_ids: set[int] = set()
-            if mrds_path and mrds_path.exists():
-                df = _read_mrds_table(
-                    mrds_path,
-                    usecols=["dep_id", "name", "dev_stat", "code_list", "latitude", "longitude"],
-                )
-                df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
-                df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
-                df = df[df["dep_id"].notna()]
-                df["dep_id"] = df["dep_id"].astype(int)
-                mrds_inserted = len(df)
-                valid_dep_ids = set(df["dep_id"].tolist())
-                rows = [
-                    (
-                        int(r.dep_id),
-                        r.name,
-                        r.dev_stat,
-                        r.code_list,
-                        r.latitude,
-                        r.longitude,
-                    )
-                    for r in df.itertuples(index=False)
-                ]
-                sql = """
-                    INSERT INTO mrds_deposit (dep_id, name, dev_stat, code_list, latitude, longitude, geom)
-                    VALUES %s
-                    ON CONFLICT (dep_id) DO UPDATE
-                    SET name = EXCLUDED.name,
-                        dev_stat = EXCLUDED.dev_stat,
-                        code_list = EXCLUDED.code_list,
-                        latitude = EXCLUDED.latitude,
-                        longitude = EXCLUDED.longitude,
-                        geom = EXCLUDED.geom
-                """
-                execute_values(
+            def log_no_change(dataset_id: str, hash_value: str | None, duration_ms: int) -> None:
+                _insert_run_log(
                     cur,
-                    sql,
-                    [
+                    dataset_id=dataset_id,
+                    download_success=True,
+                    hash_value=hash_value,
+                    has_changes=False,
+                    load_success=True,
+                    rows_inserted=0,
+                    rows_updated=0,
+                    duration_ms=duration_ms,
+                    error_message=None,
+                )
+
+            def log_missing(dataset_id: str, duration_ms: int) -> None:
+                _insert_run_log(
+                    cur,
+                    dataset_id=dataset_id,
+                    download_success=False,
+                    hash_value=None,
+                    has_changes=False,
+                    load_success=False,
+                    rows_inserted=0,
+                    rows_updated=0,
+                    duration_ms=duration_ms,
+                    error_message="Raw file not found",
+                )
+
+            def process_dataset(
+                dataset_id: str,
+                raw_path: Path | None,
+                loader,
+            ) -> None:
+                start = time.time()
+                if not raw_path or not raw_path.exists():
+                    log_missing(dataset_id, int((time.time() - start) * 1000))
+                    conn.commit()
+                    return
+
+                hash_value = _file_hash(raw_path)
+                last_hash, _ = _get_dataset_state(cur, dataset_id)
+                if hash_value and last_hash == hash_value:
+                    log_no_change(dataset_id, hash_value, int((time.time() - start) * 1000))
+                    conn.commit()
+                    return
+
+                try:
+                    rows_inserted, rows_updated = loader()
+                    _upsert_dataset_state(cur, dataset_id, hash_value or "", True)
+                    _insert_run_log(
+                        cur,
+                        dataset_id=dataset_id,
+                        download_success=True,
+                        hash_value=hash_value,
+                        has_changes=True,
+                        load_success=True,
+                        rows_inserted=rows_inserted,
+                        rows_updated=rows_updated,
+                        duration_ms=int((time.time() - start) * 1000),
+                        error_message=None,
+                    )
+                    conn.commit()
+                except Exception as exc:
+                    conn.rollback()
+                    _insert_run_log(
+                        cur,
+                        dataset_id=dataset_id,
+                        download_success=True,
+                        hash_value=hash_value,
+                        has_changes=True,
+                        load_success=False,
+                        rows_inserted=0,
+                        rows_updated=0,
+                        duration_ms=int((time.time() - start) * 1000),
+                        error_message=str(exc),
+                    )
+                    conn.commit()
+
+            def load_iso_codes() -> tuple[int, int]:
+                if iso_df.empty:
+                    return 0, 0
+                inserted = _insert_iso_country_codes(cur, iso_df)
+                return inserted, 0
+
+            def load_worldbank(dataset_id: str, raw_path: Path) -> tuple[int, int]:
+                rows = _load_worldbank_rows(raw_path, dataset_id, aliases)
+                countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
+                countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                _insert_countries(cur, countries)
+                country_map = _country_id_map(cur)
+
+                payload = []
+                for r in rows:
+                    country_id = country_map.get(r["country_norm"])
+                    if not country_id or not r.get("year"):
+                        continue
+                    payload.append(
                         (
-                            dep_id,
-                            name,
-                            dev_stat,
-                            code_list,
-                            lat,
-                            lon,
-                            f"SRID=4326;POINT({lon} {lat})"
-                            if pd.notna(lat) and pd.notna(lon)
-                            else None,
+                            int(country_id),
+                            r["dataset_id"],
+                            r.get("indicator_code"),
+                            int(r["year"]),
+                            r.get("value"),
                         )
-                        for dep_id, name, dev_stat, code_list, lat, lon in rows
-                    ],
-                    template="(%s,%s,%s,%s,%s,%s,ST_GeomFromText(%s))",
-                )
-
-            # MRDS location
-            if not location_df.empty:
-                # Ensure locations only reference deposits we loaded.
-                if valid_dep_ids:
-                    location_df = location_df[location_df["dep_id"].astype(int).isin(valid_dep_ids)]
-                location_df["country_id"] = location_df["country_norm"].map(country_map)
-                location_df = location_df[location_df["country_id"].notna()]
-                # MRDS Location can contain repeated dep_id rows; keep one per deposit.
-                location_df = location_df.drop_duplicates(subset=["dep_id"])
-                rows = [
-                    (
-                        int(r.dep_id),
-                        int(r.country_id),
-                        r.state_prov,
-                        r.region,
-                        r.county,
                     )
-                    for r in location_df.itertuples(index=False)
-                ]
+                unique_rows: dict[tuple[int, str, str | None, int], tuple] = {}
+                for row in payload:
+                    key = (row[0], row[1], row[2], row[3])
+                    if key not in unique_rows:
+                        unique_rows[key] = row
+                payload = list(unique_rows.values())
                 sql = """
-                    INSERT INTO mrds_location (dep_id, country_id, state_prov, region, county)
+                    INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value)
                     VALUES %s
-                    ON CONFLICT (dep_id) DO UPDATE
-                    SET country_id = EXCLUDED.country_id,
-                        state_prov = EXCLUDED.state_prov,
-                        region = EXCLUDED.region,
-                        county = EXCLUDED.county
+                    ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
+                    SET value = EXCLUDED.value
                 """
-                execute_values(cur, sql, rows)
+                execute_values(cur, sql, payload)
+                return len(payload), 0
 
-            # MRDS related tables
-            related = {
-                "Commodity": (
-                    "mrds_commodity",
-                    ["dep_id", "commod", "code", "commod_tp", "commod_group", "import"],
-                ),
-                "Materials": (
-                    "mrds_material",
-                    ["dep_id", "rec", "ore_gangue", "material"],
-                ),
-                "Ownership": (
-                    "mrds_ownership",
-                    ["dep_id", "owner_name", "owner_tp"],
-                ),
-                "Physiography": (
-                    "mrds_physiography",
-                    ["dep_id", "phys_div", "phys_prov", "phys_sect", "phys_det"],
-                ),
-                "Ages": (
-                    "mrds_ages",
-                    ["dep_id", "age_tp", "age_young"],
-                ),
-                "Rocks": (
-                    "mrds_rocks",
-                    ["dep_id", "rock_cls", "first_ord_nm", "second_ord_nm", "third_ord_nm", "low_name"],
-                ),
-            }
-            for name, (table, cols) in related.items():
-                path = _resolve_mrds_file(mrds_extract, name)
-                if not path or not path.exists():
-                    continue
-                df = _read_mrds_table(path, usecols=cols)
-                if name == "Materials" and "ore_gangue" not in df.columns:
-                    # Some MRDS exports use "ore_gauge"; normalize to ore_gangue.
-                    alt = _read_mrds_table(path, usecols=["dep_id", "rec", "ore_gauge", "material"])
-                    if "ore_gauge" in alt.columns:
-                        alt = alt.rename(columns={"ore_gauge": "ore_gangue"})
-                        df = alt[cols]
-                if name == "Rocks":
-                    for col in ["first_ord_nm", "second_ord_nm", "third_ord_nm"]:
-                        if col in df.columns:
-                            df[col] = df[col].astype(str).str.strip()
-                            df.loc[df[col].isin(["", "nan", "None"]), col] = "N/A"
-                text_cols = [c for c in cols if c != "dep_id"]
-                df = _strip_text_columns(df, text_cols)
-                if "dep_id" in df.columns and valid_dep_ids:
-                    df = df[df["dep_id"].astype(int).isin(valid_dep_ids)]
-                if df.empty:
-                    continue
-                rows = [tuple(r) for r in df.itertuples(index=False)]
-                sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES %s"
-                execute_values(cur, sql, rows)
+            def load_fsi(raw_path: Path) -> tuple[int, int]:
+                fsi_entry = _dataset_entry(cfg, "fsi")
+                year_hint = _infer_year_from_dataset(fsi_entry, raw_path)
+                rows = _load_fsi_rows(raw_path, aliases, dataset_id="fsi", year_hint=year_hint)
+                countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
+                countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                _insert_countries(cur, countries)
+                country_map = _country_id_map(cur)
 
-            # Country indicators (no JSON staging; direct DB normalization)
-            # This avoids duplicate storage and keeps a single source of truth in PostgreSQL.
-            indicator_rows: list[dict[str, Any]] = []
-            indicator_rows.extend(gdp_rows)
-            indicator_rows.extend(pop_rows)
-            indicator_rows.extend(fsi_rows)
-            indicator_rows.extend(cpi_rows)
-
-            rows = []
-            for r in indicator_rows:
-                country_id = country_map.get(r["country_norm"])
-                if not country_id or not r.get("year"):
-                    continue
-                rows.append(
-                    (
-                        int(country_id),
-                        r["dataset_id"],
-                        r.get("indicator_code"),
-                        int(r["year"]),
-                        r.get("value"),
+                payload = []
+                for r in rows:
+                    country_id = country_map.get(r["country_norm"])
+                    if not country_id or not r.get("year"):
+                        continue
+                    payload.append(
+                        (
+                            int(country_id),
+                            r["dataset_id"],
+                            r.get("indicator_code"),
+                            int(r["year"]),
+                            r.get("value"),
+                        )
                     )
-                )
-            # Deduplicate within the batch to avoid ON CONFLICT double-hit errors.
-            unique_rows: dict[tuple[int, str, str | None, int], tuple] = {}
-            for row in rows:
-                key = (row[0], row[1], row[2], row[3])
-                if key not in unique_rows:
-                    unique_rows[key] = row
-            rows = list(unique_rows.values())
-            sql = """
-                INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value)
-                VALUES %s
-                ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
-                SET value = EXCLUDED.value
-            """
-            execute_values(cur, sql, rows)
+                unique_rows: dict[tuple[int, str, str | None, int], tuple] = {}
+                for row in payload:
+                    key = (row[0], row[1], row[2], row[3])
+                    if key not in unique_rows:
+                        unique_rows[key] = row
+                payload = list(unique_rows.values())
+                sql = """
+                    INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value)
+                    VALUES %s
+                    ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
+                    SET value = EXCLUDED.value
+                """
+                execute_values(cur, sql, payload)
+                return len(payload), 0
 
-            # ETL audit logs per dataset.
-            for ds_id, path, count in [
-                ("iso_country_codes", iso_path, iso_rows_inserted),
-                ("worldbank_gdp", gdp_path, len(gdp_rows)),
-                ("worldbank_population", pop_path, len(pop_rows)),
-                ("fsi", fsi_path, len(fsi_rows)),
-                ("cpi", cpi_path, len(cpi_rows)),
-                ("mrds_csv", mrds_path, mrds_inserted),
-            ]:
-                status = "SUCCESS" if path and path.exists() else "FAILED"
-                _log_etl(
-                    cur,
-                    ds_id,
-                    path,
-                    count if status == "SUCCESS" else None,
-                    0 if status == "SUCCESS" else None,
-                    status,
-                    None if status == "SUCCESS" else "Raw file not found",
-                )
+            def load_cpi(raw_path: Path) -> tuple[int, int]:
+                cpi_entry = _dataset_entry(cfg, "cpi")
+                year_hint = _infer_year_from_dataset(cpi_entry, raw_path)
+                rows = _load_cpi_rows(raw_path, aliases, dataset_id="cpi", year_hint=year_hint)
+                countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
+                countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                _insert_countries(cur, countries)
+                country_map = _country_id_map(cur)
 
-        conn.commit()
+                payload = []
+                for r in rows:
+                    country_id = country_map.get(r["country_norm"])
+                    if not country_id or not r.get("year"):
+                        continue
+                    payload.append(
+                        (
+                            int(country_id),
+                            r["dataset_id"],
+                            r.get("indicator_code"),
+                            int(r["year"]),
+                            r.get("value"),
+                        )
+                    )
+                unique_rows: dict[tuple[int, str, str | None, int], tuple] = {}
+                for row in payload:
+                    key = (row[0], row[1], row[2], row[3])
+                    if key not in unique_rows:
+                        unique_rows[key] = row
+                payload = list(unique_rows.values())
+                sql = """
+                    INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value)
+                    VALUES %s
+                    ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
+                    SET value = EXCLUDED.value
+                """
+                execute_values(cur, sql, payload)
+                return len(payload), 0
+
+            def load_mrds(raw_path: Path) -> tuple[int, int]:
+                loc_path = _resolve_mrds_file(mrds_extract, "Location")
+                location_df = _load_mrds_location(loc_path, aliases) if loc_path else pd.DataFrame()
+                if iso_name_set:
+                    location_df = location_df[location_df["country_norm"].isin(iso_name_set)]
+
+                countries = []
+                if not location_df.empty:
+                    countries.extend(
+                        zip(location_df["country"], location_df["country_norm"], [None] * len(location_df))
+                    )
+                countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                _insert_countries(cur, countries)
+                country_map = _country_id_map(cur)
+
+                mrds_path = _resolve_mrds_file(mrds_extract, "MRDS")
+                mrds_inserted = 0
+                valid_dep_ids: set[int] = set()
+                if mrds_path and mrds_path.exists():
+                    df = _read_mrds_table(
+                        mrds_path,
+                        usecols=["dep_id", "name", "dev_stat", "code_list", "latitude", "longitude"],
+                    )
+                    df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
+                    df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
+                    df = df[df["dep_id"].notna()]
+                    df["dep_id"] = df["dep_id"].astype(int)
+                    mrds_inserted = len(df)
+                    valid_dep_ids = set(df["dep_id"].tolist())
+                    rows = [
+                        (
+                            int(r.dep_id),
+                            r.name,
+                            r.dev_stat,
+                            r.code_list,
+                            r.latitude,
+                            r.longitude,
+                        )
+                        for r in df.itertuples(index=False)
+                    ]
+                    sql = """
+                        INSERT INTO mrds_deposit (dep_id, name, dev_stat, code_list, latitude, longitude, geom)
+                        VALUES %s
+                        ON CONFLICT (dep_id) DO UPDATE
+                        SET name = EXCLUDED.name,
+                            dev_stat = EXCLUDED.dev_stat,
+                            code_list = EXCLUDED.code_list,
+                            latitude = EXCLUDED.latitude,
+                            longitude = EXCLUDED.longitude,
+                            geom = EXCLUDED.geom
+                    """
+                    execute_values(
+                        cur,
+                        sql,
+                        [
+                            (
+                                dep_id,
+                                name,
+                                dev_stat,
+                                code_list,
+                                lat,
+                                lon,
+                                f"SRID=4326;POINT({lon} {lat})"
+                                if pd.notna(lat) and pd.notna(lon)
+                                else None,
+                            )
+                            for dep_id, name, dev_stat, code_list, lat, lon in rows
+                        ],
+                        template="(%s,%s,%s,%s,%s,%s,ST_GeomFromText(%s))",
+                    )
+
+                if not location_df.empty:
+                    if valid_dep_ids:
+                        location_df = location_df[location_df["dep_id"].astype(int).isin(valid_dep_ids)]
+                    location_df["country_id"] = location_df["country_norm"].map(country_map)
+                    location_df = location_df[location_df["country_id"].notna()]
+                    location_df = location_df.drop_duplicates(subset=["dep_id"])
+                    rows = [
+                        (
+                            int(r.dep_id),
+                            int(r.country_id),
+                            r.state_prov,
+                            r.region,
+                            r.county,
+                        )
+                        for r in location_df.itertuples(index=False)
+                    ]
+                    sql = """
+                        INSERT INTO mrds_location (dep_id, country_id, state_prov, region, county)
+                        VALUES %s
+                        ON CONFLICT (dep_id) DO UPDATE
+                        SET country_id = EXCLUDED.country_id,
+                            state_prov = EXCLUDED.state_prov,
+                            region = EXCLUDED.region,
+                            county = EXCLUDED.county
+                    """
+                    execute_values(cur, sql, rows)
+
+                related = {
+                    "Commodity": (
+                        "mrds_commodity",
+                        ["dep_id", "commod", "code", "commod_tp", "commod_group", "import"],
+                    ),
+                    "Materials": (
+                        "mrds_material",
+                        ["dep_id", "rec", "ore_gangue", "material"],
+                    ),
+                    "Ownership": (
+                        "mrds_ownership",
+                        ["dep_id", "owner_name", "owner_tp"],
+                    ),
+                    "Physiography": (
+                        "mrds_physiography",
+                        ["dep_id", "phys_div", "phys_prov", "phys_sect", "phys_det"],
+                    ),
+                    "Ages": (
+                        "mrds_ages",
+                        ["dep_id", "age_tp", "age_young"],
+                    ),
+                    "Rocks": (
+                        "mrds_rocks",
+                        ["dep_id", "rock_cls", "first_ord_nm", "second_ord_nm", "third_ord_nm", "low_name"],
+                    ),
+                }
+                dep_id_list = list(valid_dep_ids)
+                for name, (table, cols) in related.items():
+                    path = _resolve_mrds_file(mrds_extract, name)
+                    if not path or not path.exists():
+                        continue
+                    df = _read_mrds_table(path, usecols=cols)
+                    if name == "Materials" and "ore_gangue" not in df.columns:
+                        alt = _read_mrds_table(path, usecols=["dep_id", "rec", "ore_gauge", "material"])
+                        if "ore_gauge" in alt.columns:
+                            alt = alt.rename(columns={"ore_gauge": "ore_gangue"})
+                            df = alt[cols]
+                    if name == "Rocks":
+                        for col in ["first_ord_nm", "second_ord_nm", "third_ord_nm"]:
+                            if col in df.columns:
+                                df[col] = df[col].astype(str).str.strip()
+                                df.loc[df[col].isin(["", "nan", "None"]), col] = "N/A"
+                    text_cols = [c for c in cols if c != "dep_id"]
+                    df = _strip_text_columns(df, text_cols)
+                    if "dep_id" in df.columns and valid_dep_ids:
+                        df = df[df["dep_id"].astype(int).isin(valid_dep_ids)]
+                    if df.empty:
+                        continue
+                    if dep_id_list:
+                        cur.execute(
+                            f"DELETE FROM {table} WHERE dep_id = ANY(%s)",
+                            (dep_id_list,),
+                        )
+                    rows = [tuple(r) for r in df.itertuples(index=False)]
+                    sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES %s"
+                    execute_values(cur, sql, rows)
+
+                return mrds_inserted, 0
+
+            datasets = cfg.get("datasets") or []
+            dataset_ids = {ds.get("id") for ds in datasets if isinstance(ds, dict)}
+
+            if "iso_country_codes" in dataset_ids:
+                process_dataset("iso_country_codes", iso_path, load_iso_codes)
+            if "worldbank_gdp" in dataset_ids:
+                gdp_path = _dataset_path(cfg, "worldbank_gdp", raw_dir)
+                process_dataset("worldbank_gdp", gdp_path, lambda: load_worldbank("worldbank_gdp", gdp_path))
+            if "worldbank_population" in dataset_ids:
+                pop_path = _dataset_path(cfg, "worldbank_population", raw_dir)
+                process_dataset(
+                    "worldbank_population",
+                    pop_path,
+                    lambda: load_worldbank("worldbank_population", pop_path),
+                )
+            if "fsi" in dataset_ids:
+                fsi_path = _dataset_path(cfg, "fsi", raw_dir)
+                if not fsi_path or not fsi_path.exists():
+                    legacy_path = _legacy_fsi_path(raw_dir)
+                    if legacy_path:
+                        fsi_path = legacy_path
+                process_dataset("fsi", fsi_path, lambda: load_fsi(fsi_path))
+            if "cpi" in dataset_ids:
+                cpi_path = _dataset_path(cfg, "cpi", raw_dir)
+                process_dataset("cpi", cpi_path, lambda: load_cpi(cpi_path))
+            if "mrds_csv" in dataset_ids:
+                mrds_zip = _dataset_path(cfg, "mrds_csv", raw_dir)
+                process_dataset("mrds_csv", mrds_zip, lambda: load_mrds(mrds_zip))
+
         _print_sanity_checks(conn)
 
     return 0

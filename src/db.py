@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Database connection helpers for the ETL and UI."""
+
 import os
 from typing import Any
 
@@ -8,6 +10,7 @@ from psycopg2.extensions import connection as PgConnection
 
 
 def _get_env(name: str, default: str | None = None) -> str | None:
+    """Return a non-empty environment variable or a default."""
     # Environment variables keep credentials out of source control.
     value = os.getenv(name, default)
     if value is None or value == "":

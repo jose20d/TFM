@@ -29,19 +29,35 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Conexión a base de datos (ajusta según tu entorno)
+# Conexión a base de datos (ejemplo: ajusta según tu entorno)
 export DB_HOST=localhost
 export DB_PORT=5432
-export DB_NAME=tfm
-export DB_USER=tfm
-export DB_PASSWORD='tu_password'
+export DB_NAME=tu_db
+export DB_USER=tu_usuario
+export DB_PASSWORD=tu_password
 
 # Ejecutar el pipeline completo (descarga → limpieza → carga → Streamlit)
 python3 main.py
 ```
 
-Nota: CPI está configurado en `configs/datasets.json` pero la descarga está desactivada por defecto.
-Actualiza la URL al XLSX directo y cambia `"download": true` para habilitarlo.
+Los archivos crudos siempre se descargan de nuevo para mantener CI determinista.
+
+## Referencia ISO de países (whitelist)
+
+El pipeline descarga los códigos ISO 3166-1 y los carga en PostgreSQL.
+Solo se insertan en `dim_country` los países presentes en ese dataset ISO.
+
+- Archivo crudo: `data/raw/iso/country-codes.csv`
+- Tabla en BD: `iso_country_codes`
+- Uso: filtro whitelist antes de insertar en `dim_country`
+
+## Estado y auditoría del ETL
+
+El ETL registra hashes por dataset y guarda un historial de ejecuciones.
+
+- Tabla de estado: `etl_dataset_state`
+- Log histórico: `etl_dataset_run_log`
+- Comportamiento: si el hash no cambia, se omite la carga.
 
 ## UI opcional (Streamlit local)
 

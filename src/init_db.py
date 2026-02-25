@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+"""Schema initialization utilities."""
+
 from pathlib import Path
 
 from src.db import get_connection
 
 
 def _read_sql(path: Path) -> str:
+    """Load a SQL file as a string."""
     return path.read_text(encoding="utf-8")
 
 

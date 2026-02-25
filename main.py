@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+"""Main entrypoint: download, normalize, and launch Streamlit."""
+
 import json
 import subprocess
 import sys
@@ -16,10 +18,12 @@ RAW_DIR = REPO_ROOT / "data" / "raw"
 
 
 def _read_config(path: Path) -> dict:
+    """Read the datasets configuration JSON."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _find_dataset(datasets: list[dict], ds_id: str) -> dict | None:
+    """Return a dataset entry by id."""
     for ds in datasets:
         if ds.get("id") == ds_id:
             return ds
@@ -27,6 +31,7 @@ def _find_dataset(datasets: list[dict], ds_id: str) -> dict | None:
 
 
 def _extract_zip(zip_path: Path, dest_dir: Path) -> None:
+    """Extract a zip file if the destination is empty."""
     if dest_dir.exists() and any(dest_dir.iterdir()):
         return
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -35,11 +40,13 @@ def _extract_zip(zip_path: Path, dest_dir: Path) -> None:
 
 
 def _run_script(path: Path, args: list[str]) -> int:
+    """Run a Python script as a subprocess."""
     cmd = [sys.executable, str(path), *args]
     return subprocess.call(cmd)
 
 
 def main() -> int:
+    """Orchestrate the end-to-end pipeline and Streamlit UI."""
     if not CONFIG_PATH.exists():
         print(f"ERROR: missing config at {CONFIG_PATH}", file=sys.stderr)
         return 2
