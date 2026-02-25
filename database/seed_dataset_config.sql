@@ -1,0 +1,48 @@
+-- Seed baseline dataset configuration if the table is empty.
+-- This avoids a chicken-and-egg problem during the first ETL run.
+
+INSERT INTO dataset_config (
+    dataset_id,
+    source_name,
+    source_url,
+    format,
+    update_frequency,
+    is_active
+) VALUES
+('mrds_csv',
+ 'USGS Mineral Resources Data System',
+ 'https://mrdata.usgs.gov/mrds/',
+ 'zip',
+ 'irregular',
+ TRUE),
+('worldbank_gdp',
+ 'World Bank GDP (NY.GDP.MKTP.CD)',
+ 'https://api.worldbank.org/v2/en/indicator/NY.GDP.MKTP.CD',
+ 'json',
+ 'annual',
+ TRUE),
+('worldbank_population',
+ 'World Bank Population (SP.POP.TOTL)',
+ 'https://api.worldbank.org/v2/en/indicator/SP.POP.TOTL',
+ 'json',
+ 'annual',
+ TRUE),
+('fsi',
+ 'Fragile States Index',
+ 'https://fragilestatesindex.org/',
+ 'xlsx',
+ 'annual',
+ TRUE),
+('cpi',
+ 'Transparency International CPI',
+ 'https://www.transparency.org/en/cpi',
+ 'xlsx',
+ 'annual',
+ TRUE),
+('iso_country_codes',
+ 'ISO 3166-1 country codes',
+ 'https://datahub.io/core/country-codes',
+ 'csv',
+ 'annual',
+ TRUE)
+ON CONFLICT (dataset_id) DO NOTHING;

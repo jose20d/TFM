@@ -1,0 +1,44 @@
+{
+  "version": "0.1",
+  "purpose": "Raw dataset downloads for traceability (no processing).",
+  "datasets": [
+    {
+      "id": "mrds_csv",
+      "name": "USGS MRDS (RDBMS tables)",
+      "url": "https://mrdata.usgs.gov/mrds/rdbms-tab-all.zip",
+      "output_filename": "rdbms-tab-all.zip"
+    },
+    {
+      "id": "worldbank_gdp",
+      "name": "World Bank GDP (current US$)",
+      "url": "https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.CD?format=json&per_page=20000",
+      "output_filename": "NY.GDP.MKTP.CD.json"
+    },
+    {
+      "id": "worldbank_population",
+      "name": "World Bank Population, total",
+      "url": "https://api.worldbank.org/v2/country/all/indicator/SP.POP.TOTL?format=json&per_page=20000",
+      "output_filename": "SP.POP.TOTL.json"
+    },
+    {
+      "id": "fsi",
+      "name": "Fragile States Index (Excel)",
+      "url": "https://fragilestatesindex.org/wp-content/uploads/2023/06/FSI-2023-DOWNLOAD.xlsx",
+      "output_filename": "FSI-DOWNLOAD.xlsx"
+    },
+    {
+      "id": "cpi",
+      "name": "Transparency International CPI",
+      "url": "https://files.transparencycdn.org/images/CPI2025_Results.xlsx",
+      "output_filename": "CPI2025_Results.xlsx",
+      "output_dir": "cpi"
+    },
+    {
+      "id": "iso_country_codes",
+      "name": "ISO 3166-1 country codes",
+      "url": "https://datahub.io/core/country-codes/r/country-codes.csv",
+      "output_filename": "country-codes.csv",
+      "output_dir": "iso"
+    }
+  ]
+}

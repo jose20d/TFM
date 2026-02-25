@@ -12,6 +12,7 @@ venv/
 data/
 output/
 otros/
+archive/
 references/**
 !references/.gitkeep
 
