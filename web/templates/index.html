@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GeoContext - Plataforma Analitica</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◆</span>
+      <div>
+        <h1>GeoContext</h1>
+        <p>Plataforma Analitica</p>
+      </div>
+    </div>
+    <nav class="menu">
+      <a href="#">Explore</a>
+      <a href="#">Analisis</a>
+      <a href="#">Consultas</a>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <section class="hero">
+      <div class="hero-overlay">
+        <div class="kpi-grid">
+          <article class="kpi-card">
+            <h3>Paises</h3>
+            <p id="kpi-countries">-</p>
+          </article>
+          <article class="kpi-card">
+            <h3>Depositos</h3>
+            <p id="kpi-deposits">-</p>
+          </article>
+          <article class="kpi-card">
+            <h3>Mineral principal</h3>
+            <p id="kpi-top-mineral">-</p>
+          </article>
+          <article class="kpi-card">
+            <h3>Prom. IPC / IF</h3>
+            <p><span id="kpi-cpi">-</span> / <span id="kpi-fsi">-</span></p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="row">
+      <article class="panel">
+        <h2>Top paises en recursos</h2>
+        <ul id="top-countries" class="list"></ul>
+      </article>
+      <article class="panel">
+        <h2>Minerales principales</h2>
+        <ul id="top-minerals" class="list"></ul>
+      </article>
+    </section>
+
+    <section class="row row-2">
+      <article class="panel">
+        <h2>Perfil de pais</h2>
+        <div class="country-selector">
+          <label for="country-iso3">ISO3</label>
+          <input id="country-iso3" type="text" value="CHL" maxlength="3">
+          <button id="btn-country">Cargar</button>
+        </div>
+        <div id="country-summary" class="summary-grid"></div>
+      </article>
+      <article class="panel">
+        <h2>Mapa (datos API)</h2>
+        <p class="muted">
+          Esta primera version ya consume coordenadas reales de la API.
+          En el siguiente sprint conectamos Mapbox/Leaflet para visualizacion interactiva.
+        </p>
+        <pre id="map-preview" class="code"></pre>
+      </article>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

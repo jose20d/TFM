@@ -2,11 +2,11 @@
 
 This is the **main codebase** for the Master Thesis project. New development starts here.
 
-## Current scope (Phase 2)
+## Current scope (Phase 3)
 
 - Download raw datasets for traceability.
 - Clean and normalize data directly into PostgreSQL/PostGIS.
-- Explore relationships locally via Streamlit (optional).
+- Expose a REST API and a real web base (FastAPI + HTML/CSS/JS).
 
 ## Traceability: Week 1 data-source validation demo (archived)
 
@@ -36,8 +36,16 @@ export DB_NAME=your_db
 export DB_USER=your_user
 export DB_PASSWORD=your_password
 
-# Run the full pipeline (download → clean → load → Streamlit)
+# Run the ETL pipeline (download → clean → load)
 python3 main.py
+
+# Start local web + API
+uvicorn web.app:app --reload
+
+# In a separate terminal: start Next.js frontend
+cd frontend
+npm install
+npm run dev
 ```
 
 Raw files are always re-downloaded to keep CI runs deterministic.
@@ -59,10 +67,25 @@ The ETL tracks dataset hashes and logs each run for auditability.
 - Historical run log: `etl_dataset_run_log`
 - Behavior: if the file hash is unchanged, the load step is skipped.
 
-## Optional UI (local Streamlit)
+## Local web and API
+
+Web and API share the same FastAPI backend:
+
+- Web: `http://127.0.0.1:8000/`
+- API docs: `http://127.0.0.1:8000/docs`
+
+## Web frontend (Next.js)
+
+A dedicated frontend has been added under `frontend/` for the new product-like UI.
+
+- Frontend: `http://127.0.0.1:3000/`
+- Backend API: `http://127.0.0.1:8000/` (or your FastAPI port)
+
+If FastAPI runs on a different port, set:
 
 ```bash
-streamlit run streamlit_app.py
+export BACKEND_API_URL=http://127.0.0.1:8001
+npm run dev
 ```
 
 ## Prerequisites

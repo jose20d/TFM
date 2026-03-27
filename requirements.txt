@@ -1,6 +1,8 @@
 pandas
 openpyxl
-streamlit
 requests
 psycopg2-binary
+fastapi
+uvicorn
+jinja2
 
