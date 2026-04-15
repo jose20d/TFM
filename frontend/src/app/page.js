@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 const BACKEND_URL = process.env.BACKEND_API_URL || "http://127.0.0.1:8001";
 
@@ -72,24 +73,6 @@ function resolveCountrySelection(rawTerm, countries, fallbackIso3) {
   return fallback;
 }
 
-function parseCompareIso(rawValue, selectedIso3, fallbackIso) {
-  const text = String(rawValue || "")
-    .split(",")
-    .map((part) => part.trim().toUpperCase())
-    .filter((part) => /^[A-Z]{3}$/.test(part));
-
-  const fallback = (fallbackIso || []).filter((part) => /^[A-Z]{3}$/.test(String(part)));
-  const values = text.length > 0 ? text : fallback;
-  if (!values.includes(selectedIso3)) {
-    values.unshift(selectedIso3);
-  }
-  return Array.from(new Set(values.filter(Boolean))).slice(0, 5);
-}
-
-function buildCompareQuery(isoValues) {
-  return isoValues.map((iso) => `iso3=${encodeURIComponent(iso)}`).join("&");
-}
-
 export default async function Home({ searchParams }) {
   const params = await searchParams;
   const [countries, defaults] = await Promise.all([
@@ -100,15 +83,12 @@ export default async function Home({ searchParams }) {
   const requestedTerm = params?.pais || params?.iso3 || defaultIso3;
   const selected = resolveCountrySelection(requestedTerm, countries, defaultIso3);
   const iso3 = selected.iso3;
-  const compareIso = parseCompareIso(params?.comparar, iso3, defaults.compare_iso3);
-  const compareQuery = buildCompareQuery(compareIso);
 
-  const [overview, topCountries, topMinerals, country, compareRows, dataHealth] = await Promise.all([
+  const [overview, topCountries, topMinerals, country, dataHealth] = await Promise.all([
     readJson("/api/v1/overview", {}),
     readJson("/api/v1/top-countries?limit=5", []),
     readJson("/api/v1/top-minerals?limit=5", []),
     readJson(`/api/v1/countries/${iso3}/summary`, {}),
-    readJson(`/api/v1/countries/compare?${compareQuery}`, []),
     readJson("/api/v1/health", {}),
   ]);
 
@@ -120,10 +100,6 @@ export default async function Home({ searchParams }) {
     `Minerales lideres: ${topMinerals.slice(0, 3).map((item) => item.commod).join(", ") || "N/A"}`,
     `Pais destacado: ${country.country_name || "N/A"} (${country.iso3 || iso3})`,
   ];
-  const maxGdp = Math.max(
-    1,
-    ...compareRows.map((row) => Number(row.gdp || 0)),
-  );
 
   return (
     <div className="page-shell">
@@ -137,7 +113,8 @@ export default async function Home({ searchParams }) {
           </div>
         </div>
         <nav className="menu">
-          <a href="#">Explorar</a>
+          <Link href="/explorar">Explorar</Link>
+          <Link href="/comparar">Comparar</Link>
           <a href="#">Analisis</a>
           <a href="#">Consultas</a>
           <a href="#">Usuario</a>
@@ -267,55 +244,6 @@ export default async function Home({ searchParams }) {
               ))}
             </ul>
           </article>
-        </section>
-
-        <section className="panel compare-panel">
-          <h2>Comparar paises</h2>
-          <p className="muted">Ingresa ISO3 separados por coma (ejemplo: CRI, CHL, PER).</p>
-          <form className="country-form" method="get">
-            <input type="hidden" name="pais" value={selected.label} />
-            <input
-              name="comparar"
-              defaultValue={compareIso.join(", ")}
-              placeholder="CRI, CHL, PER"
-            />
-            <button type="submit">Comparar</button>
-          </form>
-
-          <div className="compare-table-wrap">
-            <table className="compare-table">
-              <thead>
-                <tr>
-                  <th>Pais</th>
-                  <th>ISO</th>
-                  <th>Depositos</th>
-                  <th>PIB</th>
-                  <th>IPC</th>
-                  <th>EFI</th>
-                </tr>
-              </thead>
-              <tbody>
-                {compareRows.map((row) => {
-                  const gdpRatio = Math.max(2, Math.round((Number(row.gdp || 0) / maxGdp) * 100));
-                  return (
-                    <tr key={row.iso3}>
-                      <td>{row.country_name || "N/A"}</td>
-                      <td>{row.iso3 || row.iso2 || "N/A"}</td>
-                      <td>{formatNumber(row.deposits)}</td>
-                      <td>
-                        <div className="gdp-cell">
-                          <span>{formatNumber(row.gdp)}</span>
-                          <span className="gdp-bar" style={{ width: `${gdpRatio}%` }} />
-                        </div>
-                      </td>
-                      <td>{formatNumber(row.cpi)}</td>
-                      <td>{formatNumber(row.fsi)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
         </section>
       </main>
     </div>

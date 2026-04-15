@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,6 +22,16 @@ app = FastAPI(
     description="API and web layer for mineral and socioeconomic insights.",
 )
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _fetch_one(sql: str, params: tuple | None = None) -> dict:
@@ -197,6 +208,45 @@ def api_deposits_map(limit: int = Query(default=2000, ge=50, le=10000)) -> list[
         LIMIT %s
     """
     return _fetch_all(sql, (limit,))
+
+
+@app.get("/api/v1/explore/deposits")
+def api_explore_deposits(
+    country_iso3: str | None = Query(default=None),
+    mineral: str | None = Query(default=None),
+    limit: int = Query(default=2000, ge=50, le=10000),
+) -> list[dict]:
+    """Return map points using dynamic country/mineral filters."""
+    iso3 = (country_iso3 or "").strip().upper()
+    mineral_q = (mineral or "").strip()
+    sql = """
+        SELECT d.dep_id,
+               d.name,
+               d.latitude,
+               d.longitude,
+               d.dev_stat,
+               c.country_name,
+               c.iso3,
+               STRING_AGG(DISTINCT mc.commod, ', ') AS minerals
+        FROM mrds_deposit d
+        JOIN mrds_location l ON l.dep_id = d.dep_id
+        JOIN dim_country c ON c.country_id = l.country_id
+        LEFT JOIN mrds_commodity mc ON mc.dep_id = d.dep_id
+        WHERE d.latitude IS NOT NULL
+          AND d.longitude IS NOT NULL
+          AND (%s = '' OR c.iso3 = %s)
+          AND (%s = '' OR EXISTS (
+                SELECT 1
+                FROM mrds_commodity x
+                WHERE x.dep_id = d.dep_id
+                  AND LOWER(x.commod) LIKE LOWER(%s)
+          ))
+        GROUP BY d.dep_id, d.name, d.latitude, d.longitude, d.dev_stat, c.country_name, c.iso3
+        ORDER BY d.dep_id
+        LIMIT %s
+    """
+    like_mineral = f"%{mineral_q}%"
+    return _fetch_all(sql, (iso3, iso3, mineral_q, like_mineral, limit))
 
 
 @app.get("/api/v1/countries/{iso3}/summary")
