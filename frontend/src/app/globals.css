@@ -548,6 +548,16 @@ a {
   border: 1px solid rgba(104, 144, 182, 0.25);
 }
 
+.results-scroll {
+  height: 460px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.results-panel {
+  align-self: start;
+}
+
 @media (max-width: 1024px) {
   .kpi-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));

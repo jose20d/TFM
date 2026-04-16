@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CircleMarker, MapContainer, TileLayer, Tooltip } from "react-leaflet";
+import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -28,6 +28,36 @@ function formatNumber(value) {
   const num = Number(value);
   if (Number.isNaN(num)) return String(value);
   return new Intl.NumberFormat("es-ES").format(num);
+}
+
+function MapAutoZoom({ rows, countryIso, loading }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!countryIso) {
+      map.setView(DEFAULT_VIEW, DEFAULT_ZOOM, { animate: true });
+      return;
+    }
+    if (!rows.length) return;
+    const staleRows = rows.some((item) => String(item.iso3 || "").toUpperCase() !== countryIso);
+    if (staleRows) return;
+
+    const points = rows
+      .map((item) => [Number(item.latitude), Number(item.longitude)])
+      .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
+    if (!points.length) return;
+
+    if (points.length === 1) {
+      map.setView(points[0], 6, { animate: true });
+      return;
+    }
+
+    const bounds = L.latLngBounds(points);
+    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 7, animate: true });
+  }, [map, rows, countryIso, loading]);
+
+  return null;
 }
 
 export default function ExploreClient() {
@@ -174,6 +204,7 @@ export default function ExploreClient() {
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
+                <MapAutoZoom rows={mapRows} countryIso={filters.countryIso} loading={loading} />
                 {mapRows.map((item) => (
                   <CircleMarker
                     key={item.dep_id}
@@ -198,19 +229,25 @@ export default function ExploreClient() {
             )}
           </article>
 
-          <article className="panel">
+          <article className="panel results-panel">
             <h2>Resultados</h2>
             {error && <p className="muted">Error: {error}</p>}
             {!error && (
-              <ul className="countries-list">
-                {rows.slice(0, 20).map((item) => (
-                  <li key={`row-${item.dep_id}`}>
-                    <strong>{item.name || `Dep. ${item.dep_id}`}</strong> - {item.country_name} - {item.minerals || "N/A"}
-                  </li>
-                ))}
-              </ul>
+              <div className="results-scroll">
+                <ul className="countries-list">
+                  {rows.map((item) => (
+                    <li key={`row-${item.dep_id}`}>
+                      <strong>{item.name || `Dep. ${item.dep_id}`}</strong> - {item.country_name} - {item.minerals || "N/A"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
-            <p className="muted">Mostrando hasta 20 resultados en listado para rendimiento.</p>
+            {!error && (
+              <p className="muted">
+                Mostrando 20 visibles de {formatNumber(rows.length)} resultados. Desplaza para ver mas.
+              </p>
+            )}
           </article>
         </section>
       </main>

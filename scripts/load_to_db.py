@@ -17,6 +17,11 @@ from typing import Any, Iterable
 import pandas as pd
 from psycopg2.extras import execute_values
 
+try:
+    import reverse_geocoder as rg  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    rg = None  # type: ignore
+
 # Ensure repo root is on sys.path for local imports.
 # This keeps the ETL self-contained without additional packaging.
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -673,6 +678,177 @@ def _country_id_map(cur) -> dict[str, int]:
     return {row[1]: row[0] for row in cur.fetchall()}
 
 
+def _iso2_country_id_map(cur) -> dict[str, int]:
+    """Build an ISO2 → country_id map using ISO reference data."""
+    cur.execute(
+        """
+        SELECT UPPER(i.iso2) AS iso2, c.country_id
+        FROM dim_country c
+        JOIN iso_country_codes i ON i.iso3 = c.iso3
+        WHERE i.iso2 IS NOT NULL AND TRIM(i.iso2) <> ''
+        """
+    )
+    return {row[0]: int(row[1]) for row in cur.fetchall()}
+
+
+def _infer_missing_mrds_locations(cur, iso2_to_country_id: dict[str, int]) -> int:
+    """
+    Infer missing MRDS locations from deposit coordinates.
+
+    This only inserts rows for deposits that currently have no mrds_location.
+    Country is mapped via ISO2 (reverse geocoder cc -> dim_country country_id).
+    """
+    if rg is None:
+        print(
+            "[warn] reverse_geocoder not installed; skipping coordinate-based location inference",
+            file=sys.stderr,
+        )
+        return 0
+    if not iso2_to_country_id:
+        return 0
+
+    cur.execute(
+        """
+        SELECT d.dep_id, d.latitude, d.longitude
+        FROM mrds_deposit d
+        LEFT JOIN mrds_location l ON l.dep_id = d.dep_id
+        WHERE l.dep_id IS NULL
+          AND d.latitude IS NOT NULL
+          AND d.longitude IS NOT NULL
+        ORDER BY d.dep_id
+        """
+    )
+    missing = cur.fetchall()
+    if not missing:
+        return 0
+
+    rows_to_insert: list[tuple[int, int | None, str | None, None, None]] = []
+    batch_size = 5000
+    for start in range(0, len(missing), batch_size):
+        batch = missing[start : start + batch_size]
+        coords = [(float(r[1]), float(r[2])) for r in batch]
+        matches = rg.search(coords, mode=1)
+        for (dep_id, _lat, _lon), match in zip(batch, matches):
+            iso2 = str(match.get("cc") or "").upper()
+            admin1 = str(match.get("admin1") or "").strip() or None
+            country_id = iso2_to_country_id.get(iso2)
+            # Keep state when available even if country is unresolved.
+            if country_id is None and admin1 is None:
+                continue
+            rows_to_insert.append((int(dep_id), country_id, admin1, None, None))
+
+    if not rows_to_insert:
+        return 0
+
+    sql = """
+        INSERT INTO mrds_location (dep_id, country_id, state_prov, region, county)
+        VALUES %s
+        ON CONFLICT (dep_id) DO NOTHING
+    """
+    execute_values(cur, sql, rows_to_insert)
+    return len(rows_to_insert)
+
+
+def _repair_existing_mrds_locations(
+    cur,
+    iso2_to_country_id: dict[str, int],
+    *,
+    fix_country: bool,
+    fix_state: bool,
+) -> int:
+    """
+    Repair existing mrds_location rows using deposit coordinates.
+
+    - fix_country: fill country_id when null
+    - fix_state: fill state_prov when null/blank/N/A
+    """
+    if rg is None:
+        return 0
+    if not iso2_to_country_id:
+        return 0
+
+    predicates = []
+    if fix_country:
+        predicates.append("l.country_id IS NULL")
+    if fix_state:
+        predicates.append("l.state_prov IS NULL OR TRIM(l.state_prov) = '' OR l.state_prov = 'N/A'")
+    if not predicates:
+        return 0
+
+    cur.execute(
+        f"""
+        SELECT l.dep_id, d.latitude, d.longitude, l.country_id, l.state_prov
+        FROM mrds_location l
+        JOIN mrds_deposit d ON d.dep_id = l.dep_id
+        WHERE d.latitude IS NOT NULL
+          AND d.longitude IS NOT NULL
+          AND ({' OR '.join(predicates)})
+        ORDER BY l.dep_id
+        """
+    )
+    targets = cur.fetchall()
+    if not targets:
+        return 0
+
+    updates: list[tuple[int | None, str | None, int]] = []
+    batch_size = 5000
+    for start in range(0, len(targets), batch_size):
+        batch = targets[start : start + batch_size]
+        coords = [(float(r[1]), float(r[2])) for r in batch]
+        matches = rg.search(coords, mode=1)
+        for (dep_id, _lat, _lon, country_id, state_prov), match in zip(batch, matches):
+            next_country = int(country_id) if country_id is not None else None
+            next_state = str(state_prov).strip() if state_prov is not None else None
+            changed = False
+
+            if fix_country and next_country is None:
+                iso2 = str(match.get("cc") or "").upper()
+                inferred_country = iso2_to_country_id.get(iso2)
+                if inferred_country is not None:
+                    next_country = int(inferred_country)
+                    changed = True
+
+            if fix_state and (next_state is None or next_state == "" or next_state == "N/A"):
+                inferred_state = str(match.get("admin1") or "").strip() or None
+                if inferred_state:
+                    next_state = inferred_state
+                    changed = True
+
+            if changed:
+                updates.append((next_country, next_state, int(dep_id)))
+
+    if not updates:
+        return 0
+
+    sql = """
+        UPDATE mrds_location AS l
+        SET country_id = v.country_id,
+            state_prov = v.state_prov
+        FROM (VALUES %s) AS v(country_id, state_prov, dep_id)
+        WHERE l.dep_id = v.dep_id
+    """
+    execute_values(cur, sql, updates)
+    return len(updates)
+
+
+def _run_mrds_location_reconcile(cur) -> tuple[int, int, int]:
+    """
+    Run the location reconcile flow:
+    1) fill missing country on existing rows
+    2) insert rows for deposits with no location
+    3) repair country/state where still missing or N/A
+    """
+    iso2_map = _iso2_country_id_map(cur)
+    pre_country = _repair_existing_mrds_locations(
+        cur, iso2_map, fix_country=True, fix_state=False
+    )
+    inserted_missing = _infer_missing_mrds_locations(cur, iso2_map)
+    post_repair = _repair_existing_mrds_locations(
+        cur, iso2_map, fix_country=True, fix_state=True
+    )
+    return pre_country, inserted_missing, post_repair
+
+
 def _insert_dataset_config(cur, cfg: dict[str, Any]) -> None:
     """Upsert dataset configuration metadata."""
     datasets = cfg.get("datasets") or []
@@ -1074,6 +1250,14 @@ def main() -> int:
                     """
                     execute_values(cur, sql, rows)
 
+                pre_country, inferred_count, repaired_count = _run_mrds_location_reconcile(cur)
+                if pre_country:
+                    print(f"[info] mrds_location country backfilled before insert: {pre_country}")
+                if inferred_count:
+                    print(f"[info] mrds_location inferred from coordinates: {inferred_count}")
+                if repaired_count:
+                    print(f"[info] mrds_location repaired (country/state): {repaired_count}")
+
                 related = {
                     "Commodity": (
                         "mrds_commodity",
@@ -1161,6 +1345,15 @@ def main() -> int:
             if "mrds_csv" in dataset_ids:
                 mrds_zip = _dataset_path(cfg, "mrds_csv", raw_dir)
                 process_dataset("mrds_csv", mrds_zip, lambda: load_mrds(mrds_zip))
+                pre_country, inferred_count, repaired_count = _run_mrds_location_reconcile(cur)
+                if pre_country:
+                    print(f"[info] mrds_location country backfilled (reconcile): {pre_country}")
+                if inferred_count:
+                    print(f"[info] mrds_location inferred from coordinates (reconcile): {inferred_count}")
+                if repaired_count:
+                    print(f"[info] mrds_location repaired country/state (reconcile): {repaired_count}")
+                if pre_country or inferred_count or repaired_count:
+                    conn.commit()
 
         _print_sanity_checks(conn)
 

@@ -225,12 +225,12 @@ def api_explore_deposits(
                d.latitude,
                d.longitude,
                d.dev_stat,
-               c.country_name,
-               c.iso3,
+               COALESCE(c.country_name, 'N/A') AS country_name,
+               COALESCE(c.iso3, 'N/A') AS iso3,
                STRING_AGG(DISTINCT mc.commod, ', ') AS minerals
         FROM mrds_deposit d
-        JOIN mrds_location l ON l.dep_id = d.dep_id
-        JOIN dim_country c ON c.country_id = l.country_id
+        LEFT JOIN mrds_location l ON l.dep_id = d.dep_id
+        LEFT JOIN dim_country c ON c.country_id = l.country_id
         LEFT JOIN mrds_commodity mc ON mc.dep_id = d.dep_id
         WHERE d.latitude IS NOT NULL
           AND d.longitude IS NOT NULL
@@ -242,7 +242,9 @@ def api_explore_deposits(
                   AND LOWER(x.commod) LIKE LOWER(%s)
           ))
         GROUP BY d.dep_id, d.name, d.latitude, d.longitude, d.dev_stat, c.country_name, c.iso3
-        ORDER BY d.dep_id
+        ORDER BY LOWER(COALESCE(c.country_name, 'N/A')),
+                 LOWER(COALESCE(d.name, '')),
+                 d.dep_id
         LIMIT %s
     """
     like_mineral = f"%{mineral_q}%"
