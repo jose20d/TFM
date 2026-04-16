@@ -121,9 +121,14 @@ Para mejorar cobertura cuando falta `Location.txt` o viene incompleto:
 2. Insercion de filas faltantes (depositos sin registro en `mrds_location`).
 3. Reparacion de filas existentes con `country_id` nulo o `state_prov` nulo/blank/`N/A`.
 
+La reconciliacion se ejecuta dentro de la carga MRDS y tambien al final del bloque MRDS
+como paso de "reconcile", para cubrir escenarios donde el hash del dataset no cambia
+pero aun existen huecos de calidad en `mrds_location`.
+
 ### Regla clave
 
-- `N/A` debe quedar solo cuando no se logra resolver valor confiable.
+- `N/A` debe quedar solo cuando no se logra resolver valor confiable despues
+  de completar los 3 pasos de reconciliacion.
 
 ## 7) Validaciones de calidad recomendadas
 
