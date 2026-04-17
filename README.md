@@ -111,7 +111,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 - `dataset_config` is the single metadata registry table; `dim_dataset` is intentionally not used.
 - A single command (`python3 main.py`) runs the end-to-end flow with no interactive prompts.
 
-## Repository conventions
+##  Repository conventions
 
 - **Language**: code and primary documentation are in **English**.
 - **Database layer**: the main pipeline loads into PostgreSQL/PostGIS.
