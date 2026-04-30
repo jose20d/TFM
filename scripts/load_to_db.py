@@ -265,6 +265,68 @@ def _insert_iso_country_codes(cur, df: pd.DataFrame) -> int:
     return len(rows)
 
 
+def _iso3_canonical_maps(df: pd.DataFrame) -> tuple[dict[str, str], dict[str, str]]:
+    """Build canonical ISO3 -> (country_norm, country_name) maps from ISO reference data."""
+    if df.empty:
+        return {}, {}
+    iso3_to_norm: dict[str, str] = {}
+    iso3_to_name: dict[str, str] = {}
+    for row in df.itertuples(index=False):
+        iso3_raw = getattr(row, "iso3", None)
+        norm_raw = getattr(row, "country_norm", None)
+        name_raw = getattr(row, "country_name", None)
+        if not isinstance(iso3_raw, str) or not isinstance(norm_raw, str):
+            continue
+        iso3 = normalize_iso3(iso3_raw)
+        norm = normalize_country_name(norm_raw)
+        if not norm:
+            continue
+        iso3_to_norm[iso3] = norm
+        if isinstance(name_raw, str) and name_raw.strip():
+            iso3_to_name[iso3] = name_raw.strip()
+    return iso3_to_norm, iso3_to_name
+
+
+def _canonicalize_country_rows(
+    rows: Iterable[tuple[str, str, str | None]],
+    iso3_to_norm: dict[str, str],
+    iso3_to_name: dict[str, str],
+) -> list[tuple[str, str, str | None]]:
+    """
+    Canonicalize country tuples using ISO3 when available.
+
+    This avoids creating multiple dim_country rows with the same ISO3 but different names.
+    """
+    out: list[tuple[str, str, str | None]] = []
+    for name, norm, iso3 in rows:
+        iso3_norm = _norm_iso3(iso3)
+        if iso3_norm and iso3_norm in iso3_to_norm:
+            canonical_norm = iso3_to_norm[iso3_norm]
+            canonical_name = iso3_to_name.get(iso3_norm, name)
+            out.append((canonical_name, canonical_norm, iso3_norm))
+            continue
+        out.append((name, norm, iso3_norm))
+    return out
+
+
+def _canonicalize_indicator_rows(
+    rows: list[dict[str, Any]],
+    iso3_to_norm: dict[str, str],
+    iso3_to_name: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Apply ISO3 canonicalization to parsed indicator rows in memory."""
+    canonical_rows: list[dict[str, Any]] = []
+    for row in rows:
+        row_copy = dict(row)
+        iso3_norm = _norm_iso3(row_copy.get("iso3"))
+        if iso3_norm and iso3_norm in iso3_to_norm:
+            row_copy["iso3"] = iso3_norm
+            row_copy["country_norm"] = iso3_to_norm[iso3_norm]
+            row_copy["country"] = iso3_to_name.get(iso3_norm, row_copy.get("country"))
+        canonical_rows.append(row_copy)
+    return canonical_rows
+
+
 def _load_fsi_rows(
     raw_path: Path,
     aliases: dict[str, str],
@@ -672,6 +734,66 @@ def _insert_countries(cur, rows: Iterable[tuple[str, str, str | None]]) -> None:
     execute_values(cur, sql, rows)
 
 
+def _merge_dim_country_duplicates_by_iso3(cur) -> int:
+    """
+    Merge duplicate dim_country rows that share the same ISO3.
+
+    Prefers the row matching ISO canonical country_norm when available.
+    """
+    cur.execute(
+        """
+        SELECT iso3
+        FROM dim_country
+        WHERE iso3 IS NOT NULL AND TRIM(iso3) <> ''
+        GROUP BY iso3
+        HAVING COUNT(*) > 1
+        ORDER BY iso3
+        """
+    )
+    duplicate_iso3 = [row[0] for row in cur.fetchall()]
+    merged = 0
+    for iso3 in duplicate_iso3:
+        cur.execute(
+            """
+            SELECT c.country_id,
+                   c.country_name,
+                   c.country_norm,
+                   i.country_norm AS iso_country_norm
+            FROM dim_country c
+            LEFT JOIN iso_country_codes i ON i.iso3 = c.iso3
+            WHERE c.iso3 = %s
+            ORDER BY
+                CASE WHEN i.country_norm IS NOT NULL
+                          AND c.country_norm = i.country_norm THEN 0 ELSE 1 END,
+                c.country_id
+            """,
+            (iso3,),
+        )
+        rows = cur.fetchall()
+        if len(rows) <= 1:
+            continue
+        keep_id = int(rows[0][0])
+        dup_ids = [int(r[0]) for r in rows[1:]]
+
+        for dup_id in dup_ids:
+            cur.execute(
+                """
+                INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value, created_at)
+                SELECT %s, dataset_id, indicator_code, year, value, created_at
+                FROM country_indicator
+                WHERE country_id = %s
+                ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
+                SET value = EXCLUDED.value
+                """,
+                (keep_id, dup_id),
+            )
+            cur.execute("DELETE FROM country_indicator WHERE country_id = %s", (dup_id,))
+            cur.execute("UPDATE mrds_location SET country_id = %s WHERE country_id = %s", (keep_id, dup_id))
+            cur.execute("DELETE FROM dim_country WHERE country_id = %s", (dup_id,))
+            merged += 1
+    return merged
+
+
 def _country_id_map(cur) -> dict[str, int]:
     """Build a country_norm → country_id map."""
     cur.execute("SELECT country_id, country_norm FROM dim_country")
@@ -953,8 +1075,11 @@ def main() -> int:
             iso_df = pd.DataFrame()
             iso3_set: set[str] = set()
             iso_name_set: set[str] = set()
+            iso3_to_norm: dict[str, str] = {}
+            iso3_to_name: dict[str, str] = {}
             if iso_path and iso_path.exists():
                 iso_df, iso3_set, iso_name_set = _read_iso_country_codes(iso_path, aliases)
+                iso3_to_norm, iso3_to_name = _iso3_canonical_maps(iso_df)
 
             def log_no_change(dataset_id: str, hash_value: str | None, duration_ms: int) -> None:
                 _insert_run_log(
@@ -1042,8 +1167,10 @@ def main() -> int:
 
             def load_worldbank(dataset_id: str, raw_path: Path) -> tuple[int, int]:
                 rows = _load_worldbank_rows(raw_path, dataset_id, aliases)
+                rows = _canonicalize_indicator_rows(rows, iso3_to_norm, iso3_to_name)
                 countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
                 countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                countries = _canonicalize_country_rows(countries, iso3_to_norm, iso3_to_name)
                 _insert_countries(cur, countries)
                 country_map = _country_id_map(cur)
 
@@ -1080,8 +1207,10 @@ def main() -> int:
                 fsi_entry = _dataset_entry(cfg, "fsi")
                 year_hint = _infer_year_from_dataset(fsi_entry, raw_path)
                 rows = _load_fsi_rows(raw_path, aliases, dataset_id="fsi", year_hint=year_hint)
+                rows = _canonicalize_indicator_rows(rows, iso3_to_norm, iso3_to_name)
                 countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
                 countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                countries = _canonicalize_country_rows(countries, iso3_to_norm, iso3_to_name)
                 _insert_countries(cur, countries)
                 country_map = _country_id_map(cur)
 
@@ -1118,8 +1247,10 @@ def main() -> int:
                 cpi_entry = _dataset_entry(cfg, "cpi")
                 year_hint = _infer_year_from_dataset(cpi_entry, raw_path)
                 rows = _load_cpi_rows(raw_path, aliases, dataset_id="cpi", year_hint=year_hint)
+                rows = _canonicalize_indicator_rows(rows, iso3_to_norm, iso3_to_name)
                 countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
                 countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                countries = _canonicalize_country_rows(countries, iso3_to_norm, iso3_to_name)
                 _insert_countries(cur, countries)
                 country_map = _country_id_map(cur)
 
@@ -1322,6 +1453,10 @@ def main() -> int:
 
             if "iso_country_codes" in dataset_ids:
                 process_dataset("iso_country_codes", iso_path, load_iso_codes)
+                merged = _merge_dim_country_duplicates_by_iso3(cur)
+                if merged:
+                    conn.commit()
+                    print(f"[info] dim_country merged duplicate ISO3 rows: {merged}")
             if "worldbank_gdp" in dataset_ids:
                 gdp_path = _dataset_path(cfg, "worldbank_gdp", raw_dir)
                 process_dataset("worldbank_gdp", gdp_path, lambda: load_worldbank("worldbank_gdp", gdp_path))
