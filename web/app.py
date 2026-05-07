@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """FastAPI application for the production-oriented web experience."""
 
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -416,3 +417,290 @@ def api_countries_compare(iso3: list[str] = Query(default=["CRI", "CHL", "PER"])
         ORDER BY cb.ord
     """
     return _fetch_all(sql, (normalized,))
+
+
+def _safe_geojson(value: str | None) -> dict:
+    """Parse GeoJSON text safely."""
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+@app.get("/api/v1/terrain/corridor")
+def api_terrain_corridor(
+    country_iso3: str = Query(...),
+    from_dep_id: int = Query(..., ge=1),
+    to_dep_id: int = Query(..., ge=1),
+    width_km: float = Query(default=2, ge=1, le=50),
+) -> dict:
+    """Analyze deposits and minerals inside a corridor between two endpoints."""
+    iso3 = (country_iso3 or "").strip().upper()
+    if len(iso3) != 3:
+        raise HTTPException(status_code=400, detail="country_iso3 must be a valid ISO3 code.")
+    if from_dep_id == to_dep_id:
+        raise HTTPException(status_code=400, detail="from_dep_id and to_dep_id must be different.")
+
+    width_m = float(width_km) * 1000.0
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.country_name
+                FROM dim_country c
+                WHERE c.iso3 = %s
+                ORDER BY LENGTH(c.country_name) DESC, c.country_name
+                LIMIT 1
+                """,
+                (iso3,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"Country with ISO3 '{iso3}' was not found.")
+            country_name = row[0]
+
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                FROM mrds_deposit d
+                JOIN mrds_location l ON l.dep_id = d.dep_id
+                JOIN dim_country c ON c.country_id = l.country_id
+                WHERE c.iso3 = %s
+                  AND d.latitude IS NOT NULL
+                  AND d.longitude IS NOT NULL
+                """,
+                (iso3,),
+            )
+            georef_count = int(cur.fetchone()[0] or 0)
+            if georef_count < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Selected country has fewer than 2 georeferenced deposits.",
+                )
+
+            cur.execute(
+                """
+                SELECT d.dep_id,
+                       COALESCE(d.name, CONCAT('Dep. ', d.dep_id::text)) AS name,
+                       d.latitude AS lat,
+                       d.longitude AS lng,
+                       COALESCE((
+                           SELECT ARRAY_AGG(DISTINCT TRIM(mc.commod) ORDER BY TRIM(mc.commod))
+                           FROM mrds_commodity mc
+                           WHERE mc.dep_id = d.dep_id
+                             AND mc.commod IS NOT NULL
+                             AND TRIM(mc.commod) <> ''
+                       ), ARRAY[]::text[]) AS minerals
+                FROM mrds_deposit d
+                JOIN mrds_location l ON l.dep_id = d.dep_id
+                JOIN dim_country c ON c.country_id = l.country_id
+                WHERE c.iso3 = %s
+                  AND d.dep_id = ANY(%s::bigint[])
+                  AND d.latitude IS NOT NULL
+                  AND d.longitude IS NOT NULL
+                ORDER BY d.dep_id
+                """,
+                (iso3, [from_dep_id, to_dep_id]),
+            )
+            endpoint_rows = cur.fetchall()
+            if len(endpoint_rows) != 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Both endpoints must exist in the selected country and "
+                        "must have valid georeferenced coordinates."
+                    ),
+                )
+
+            endpoints_by_id = {
+                int(dep_id): {
+                    "dep_id": int(dep_id),
+                    "name": name,
+                    "lat": float(lat),
+                    "lng": float(lng),
+                    "minerals": list(minerals or []),
+                }
+                for dep_id, name, lat, lng, minerals in endpoint_rows
+            }
+            from_deposit = endpoints_by_id[from_dep_id]
+            to_deposit = endpoints_by_id[to_dep_id]
+
+            cur.execute(
+                """
+                WITH endpoints AS (
+                    SELECT
+                        ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography AS from_geog,
+                        ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography AS to_geog
+                ),
+                corridor AS (
+                    SELECT
+                        ST_MakeLine(from_geog::geometry, to_geog::geometry)::geography AS axis_geog
+                    FROM endpoints
+                )
+                SELECT
+                    ROUND((ST_Distance(e.from_geog, e.to_geog) / 1000.0)::numeric, 3) AS distance_km,
+                    ST_AsGeoJSON(c.axis_geog::geometry) AS line_geojson,
+                    ST_AsGeoJSON(ST_Buffer(c.axis_geog, %s)::geometry) AS corridor_geojson
+                FROM endpoints e
+                CROSS JOIN corridor c
+                """,
+                (
+                    from_deposit["lng"],
+                    from_deposit["lat"],
+                    to_deposit["lng"],
+                    to_deposit["lat"],
+                    width_m,
+                ),
+            )
+            line_row = cur.fetchone()
+            distance_km = float(line_row[0] or 0.0)
+            line_geojson = _safe_geojson(line_row[1] if line_row else None)
+            corridor_geojson = _safe_geojson(line_row[2] if line_row else None)
+
+            cur.execute(
+                """
+                WITH endpoints AS (
+                    SELECT
+                        ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography AS from_geog,
+                        ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography AS to_geog
+                ),
+                corridor AS (
+                    SELECT ST_MakeLine(from_geog::geometry, to_geog::geometry)::geography AS axis_geog
+                    FROM endpoints
+                ),
+                deposits_in_corridor AS (
+                    SELECT
+                        d.dep_id,
+                        COALESCE(d.name, CONCAT('Dep. ', d.dep_id::text)) AS name,
+                        d.latitude AS lat,
+                        d.longitude AS lng,
+                        ROUND(
+                            (
+                                ST_Distance(
+                                ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326)::geography,
+                                c.axis_geog
+                                ) / 1000.0
+                            )::numeric,
+                            3
+                        ) AS distance_to_axis_km
+                    FROM mrds_deposit d
+                    JOIN mrds_location l ON l.dep_id = d.dep_id
+                    JOIN dim_country dc ON dc.country_id = l.country_id
+                    CROSS JOIN corridor c
+                    WHERE dc.iso3 = %s
+                      AND d.latitude IS NOT NULL
+                      AND d.longitude IS NOT NULL
+                      AND (
+                        ST_DWithin(
+                            ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326)::geography,
+                            c.axis_geog,
+                            %s
+                        )
+                        OR d.dep_id = %s
+                        OR d.dep_id = %s
+                      )
+                )
+                SELECT
+                    d.dep_id,
+                    d.name,
+                    d.lat,
+                    d.lng,
+                    d.distance_to_axis_km,
+                    COALESCE((
+                        SELECT ARRAY_AGG(DISTINCT TRIM(mc.commod) ORDER BY TRIM(mc.commod))
+                        FROM mrds_commodity mc
+                        WHERE mc.dep_id = d.dep_id
+                          AND mc.commod IS NOT NULL
+                          AND TRIM(mc.commod) <> ''
+                    ), ARRAY[]::text[]) AS minerals
+                FROM deposits_in_corridor d
+                ORDER BY d.distance_to_axis_km ASC, d.dep_id ASC
+                """,
+                (
+                    from_deposit["lng"],
+                    from_deposit["lat"],
+                    to_deposit["lng"],
+                    to_deposit["lat"],
+                    iso3,
+                    width_m,
+                    from_dep_id,
+                    to_dep_id,
+                ),
+            )
+            corridor_rows = cur.fetchall()
+
+    deposits_in_corridor: list[dict] = []
+    mineral_counts: dict[str, int] = {}
+    deposit_mineral_sets: dict[int, set[str]] = {}
+
+    for dep_id, name, lat, lng, distance_to_axis_km, minerals in corridor_rows:
+        dep_minerals = [m for m in list(minerals or []) if isinstance(m, str) and m.strip()]
+        unique_minerals = set(dep_minerals)
+        deposit_mineral_sets[int(dep_id)] = unique_minerals
+        for mineral in unique_minerals:
+            mineral_counts[mineral] = mineral_counts.get(mineral, 0) + 1
+        deposits_in_corridor.append(
+            {
+                "dep_id": int(dep_id),
+                "name": name,
+                "lat": float(lat),
+                "lng": float(lng),
+                "distance_to_axis_km": float(distance_to_axis_km or 0.0),
+                "minerals": sorted(unique_minerals),
+                "intensity_score": 0.0,
+            }
+        )
+
+    deposit_count = len(deposits_in_corridor)
+    corridor_minerals: list[dict] = []
+    mineral_percentages: dict[str, float] = {}
+    if deposit_count > 0:
+        for mineral, count in mineral_counts.items():
+            percentage = round((count * 100.0) / deposit_count, 2)
+            mineral_percentages[mineral] = percentage
+            if percentage >= 50:
+                intensity = "high"
+            elif percentage >= 20:
+                intensity = "medium"
+            else:
+                intensity = "low"
+            corridor_minerals.append(
+                {
+                    "mineral": mineral,
+                    "count": int(count),
+                    "percentage": percentage,
+                    "intensity": intensity,
+                }
+            )
+        corridor_minerals.sort(key=lambda item: (-item["count"], item["mineral"]))
+
+    for deposit in deposits_in_corridor:
+        dep_id = deposit["dep_id"]
+        minerals = deposit_mineral_sets.get(dep_id, set())
+        if not minerals:
+            deposit["intensity_score"] = 0.0
+            continue
+        score = sum(mineral_percentages.get(mineral, 0.0) for mineral in minerals) / len(minerals)
+        deposit["intensity_score"] = round(score, 2)
+
+    from_minerals = set(from_deposit.get("minerals") or [])
+    to_minerals = set(to_deposit.get("minerals") or [])
+    common_endpoint_minerals = sorted(from_minerals.intersection(to_minerals))
+
+    return {
+        "country": {"iso3": iso3, "name": country_name},
+        "from": from_deposit,
+        "to": to_deposit,
+        "width_km": round(float(width_km), 2),
+        "distance_km": round(distance_km, 3),
+        "deposit_count": deposit_count,
+        "common_endpoint_minerals": common_endpoint_minerals,
+        "corridor_minerals": corridor_minerals,
+        "deposits_in_corridor": deposits_in_corridor,
+        "line_geojson": line_geojson,
+        "corridor_geojson": corridor_geojson,
+    }
