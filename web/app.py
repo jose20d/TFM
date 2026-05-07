@@ -704,3 +704,175 @@ def api_terrain_corridor(
         "line_geojson": line_geojson,
         "corridor_geojson": corridor_geojson,
     }
+
+
+@app.get("/api/v1/terrain/zone-interest")
+def api_terrain_zone_interest(
+    country_iso3: str = Query(...),
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    radius_km: float = Query(default=10, ge=1, le=50),
+) -> dict:
+    """Analyze deposits and minerals around a map-selected center point."""
+    iso3 = (country_iso3 or "").strip().upper()
+    if len(iso3) != 3:
+        raise HTTPException(status_code=400, detail="country_iso3 must be a valid ISO3 code.")
+
+    radius_m = float(radius_km) * 1000.0
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.country_name
+                FROM dim_country c
+                WHERE c.iso3 = %s
+                ORDER BY LENGTH(c.country_name) DESC, c.country_name
+                LIMIT 1
+                """,
+                (iso3,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"Country with ISO3 '{iso3}' was not found.")
+            country_name = row[0]
+
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                FROM mrds_deposit d
+                JOIN mrds_location l ON l.dep_id = d.dep_id
+                JOIN dim_country c ON c.country_id = l.country_id
+                WHERE c.iso3 = %s
+                  AND d.latitude IS NOT NULL
+                  AND d.longitude IS NOT NULL
+                """,
+                (iso3,),
+            )
+            georef_count = int(cur.fetchone()[0] or 0)
+            if georef_count == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Selected country has no georeferenced deposits.",
+                )
+
+            cur.execute(
+                """
+                WITH center_point AS (
+                    SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography AS center_geog
+                )
+                SELECT ST_AsGeoJSON(ST_Buffer(center_geog, %s)::geometry) AS zone_geojson
+                FROM center_point
+                """,
+                (lng, lat, radius_m),
+            )
+            zone_row = cur.fetchone()
+            zone_geojson = _safe_geojson(zone_row[0] if zone_row else None)
+
+            cur.execute(
+                """
+                WITH center_point AS (
+                    SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography AS center_geog
+                ),
+                deposits_in_zone AS (
+                    SELECT
+                        d.dep_id,
+                        COALESCE(d.name, CONCAT('Dep. ', d.dep_id::text)) AS name,
+                        d.latitude AS lat,
+                        d.longitude AS lng,
+                        ROUND(
+                            (
+                                ST_Distance(
+                                    ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326)::geography,
+                                    cp.center_geog
+                                ) / 1000.0
+                            )::numeric,
+                            3
+                        ) AS distance_km
+                    FROM mrds_deposit d
+                    JOIN mrds_location l ON l.dep_id = d.dep_id
+                    JOIN dim_country c ON c.country_id = l.country_id
+                    CROSS JOIN center_point cp
+                    WHERE c.iso3 = %s
+                      AND d.latitude IS NOT NULL
+                      AND d.longitude IS NOT NULL
+                      AND ST_DWithin(
+                          ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326)::geography,
+                          cp.center_geog,
+                          %s
+                      )
+                )
+                SELECT
+                    d.dep_id,
+                    d.name,
+                    d.lat,
+                    d.lng,
+                    d.distance_km,
+                    COALESCE((
+                        SELECT ARRAY_AGG(DISTINCT TRIM(mc.commod) ORDER BY TRIM(mc.commod))
+                        FROM mrds_commodity mc
+                        WHERE mc.dep_id = d.dep_id
+                          AND mc.commod IS NOT NULL
+                          AND TRIM(mc.commod) <> ''
+                    ), ARRAY[]::text[]) AS minerals
+                FROM deposits_in_zone d
+                ORDER BY d.distance_km ASC, d.dep_id ASC
+                """,
+                (lng, lat, iso3, radius_m),
+            )
+            rows = cur.fetchall()
+
+    deposits: list[dict] = []
+    mineral_counts: dict[str, int] = {}
+    deposit_mineral_sets: dict[int, set[str]] = {}
+
+    for dep_id, name, dep_lat, dep_lng, distance_km, minerals in rows:
+        clean_minerals = [m for m in list(minerals or []) if isinstance(m, str) and m.strip()]
+        unique_minerals = set(clean_minerals)
+        deposit_mineral_sets[int(dep_id)] = unique_minerals
+        for mineral in unique_minerals:
+            mineral_counts[mineral] = mineral_counts.get(mineral, 0) + 1
+        deposits.append(
+            {
+                "dep_id": int(dep_id),
+                "name": name,
+                "lat": float(dep_lat),
+                "lng": float(dep_lng),
+                "distance_km": float(distance_km or 0.0),
+                "minerals": sorted(unique_minerals),
+            }
+        )
+
+    deposit_count = len(deposits)
+    minerals: list[dict] = []
+    if deposit_count > 0:
+        for mineral, count in mineral_counts.items():
+            percentage = round((count * 100.0) / deposit_count, 2)
+            if percentage >= 50:
+                intensity = "high"
+            elif percentage >= 20:
+                intensity = "medium"
+            else:
+                intensity = "low"
+            minerals.append(
+                {
+                    "mineral": mineral,
+                    "count": int(count),
+                    "percentage": percentage,
+                    "intensity": intensity,
+                }
+            )
+        minerals.sort(key=lambda item: (-item["count"], item["mineral"]))
+
+    response = {
+        "country": {"iso3": iso3, "name": country_name},
+        "center": {"lat": round(float(lat), 6), "lng": round(float(lng), 6)},
+        "radius_km": round(float(radius_km), 2),
+        "deposit_count": deposit_count,
+        "minerals": minerals,
+        "deposits": deposits,
+        "zone_geojson": zone_geojson,
+    }
+    if deposit_count == 0:
+        response["message"] = "No se encontraron depositos registrados dentro del radio seleccionado."
+    return response

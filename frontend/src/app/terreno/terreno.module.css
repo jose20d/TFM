@@ -19,18 +19,21 @@
   gap: 0.6rem;
 }
 
-.corridorIntroRow {
+.corridorIntroRow,
+.zoneIntroRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.8rem;
 }
 
-.corridorIntroRow p {
+.corridorIntroRow p,
+.zoneIntroRow p {
   margin: 0;
 }
 
-.corridorIntroRow button {
+.corridorIntroRow button,
+.zoneIntroRow button {
   min-width: 220px;
 }
 
@@ -324,12 +327,14 @@
     grid-template-columns: 1fr;
   }
 
-  .corridorIntroRow {
+  .corridorIntroRow,
+  .zoneIntroRow {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .corridorIntroRow button {
+  .corridorIntroRow button,
+  .zoneIntroRow button {
     min-width: 0;
   }
 

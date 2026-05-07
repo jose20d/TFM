@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CircleMarker, GeoJSON, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { Circle, CircleMarker, GeoJSON, MapContainer, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import styles from "./terreno.module.css";
@@ -81,6 +81,73 @@ function CorridorAutoZoom({ points, focusMode, trigger }) {
   return null;
 }
 
+function ZoneMapPicker({ enabled, onSelect }) {
+  useMapEvents({
+    click(event) {
+      if (!enabled) return;
+      onSelect({
+        lat: Number(event.latlng.lat),
+        lng: Number(event.latlng.lng),
+      });
+    },
+  });
+  return null;
+}
+
+function ZoneAutoZoom({ points, center, radiusKm, countryIso, trigger }) {
+  const map = useMap();
+  const lastTriggerRef = useRef(-1);
+
+  useEffect(() => {
+    if (trigger === lastTriggerRef.current) return;
+    lastTriggerRef.current = trigger;
+
+    if (!countryIso) {
+      map.setView(DEFAULT_VIEW, DEFAULT_ZOOM, { animate: true });
+      return;
+    }
+
+    if (center && Number.isFinite(center.lat) && Number.isFinite(center.lng) && radiusKm > 0) {
+      const centerLatLng = L.latLng(center.lat, center.lng);
+      const bounds = centerLatLng.toBounds(Math.max(1000, radiusKm * 2000));
+      map.fitBounds(bounds, { padding: [35, 35], maxZoom: 10, animate: true });
+      return;
+    }
+
+    if (!points.length) {
+      map.setView(DEFAULT_VIEW, DEFAULT_ZOOM, { animate: true });
+      return;
+    }
+    if (points.length === 1) {
+      map.setView(points[0], 6, { animate: true });
+      return;
+    }
+
+    // Use robust bounds to avoid outlier points keeping the map at world scale.
+    const lats = points.map((point) => Number(point[0])).filter((value) => Number.isFinite(value));
+    const lngs = points.map((point) => Number(point[1])).filter((value) => Number.isFinite(value));
+    const sortedLats = [...lats].sort((a, b) => a - b);
+    const sortedLngs = [...lngs].sort((a, b) => a - b);
+    const q05Idx = Math.floor((sortedLats.length - 1) * 0.05);
+    const q95Idx = Math.ceil((sortedLats.length - 1) * 0.95);
+    const minLat = sortedLats[q05Idx];
+    const maxLat = sortedLats[q95Idx];
+    const minLng = sortedLngs[q05Idx];
+    const maxLng = sortedLngs[q95Idx];
+    const robustPoints = points.filter(([lat, lng]) => (
+      Number(lat) >= minLat
+      && Number(lat) <= maxLat
+      && Number(lng) >= minLng
+      && Number(lng) <= maxLng
+    ));
+
+    const bounds = L.latLngBounds(robustPoints.length >= 2 ? robustPoints : points);
+    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 8, animate: true });
+  }, [map, points, center, radiusKm, countryIso, trigger]);
+
+  return null;
+}
+
 export default function TerrenoClient() {
   const [activeTool, setActiveTool] = useState("corridor");
   const [countries, setCountries] = useState([]);
@@ -96,6 +163,17 @@ export default function TerrenoClient() {
   const [corridorResult, setCorridorResult] = useState(null);
   const analysisSeqRef = useRef(0);
   const [autoZoomTrigger, setAutoZoomTrigger] = useState(0);
+  const [zoneCountryIso, setZoneCountryIso] = useState("");
+  const [zoneCountryDeposits, setZoneCountryDeposits] = useState([]);
+  const [zoneCountryLoading, setZoneCountryLoading] = useState(false);
+  const [zoneCountryError, setZoneCountryError] = useState("");
+  const [zoneCenter, setZoneCenter] = useState(null);
+  const [zoneRadiusKm, setZoneRadiusKm] = useState(10);
+  const [zoneAnalysisLoading, setZoneAnalysisLoading] = useState(false);
+  const [zoneAnalysisError, setZoneAnalysisError] = useState("");
+  const [zoneResult, setZoneResult] = useState(null);
+  const [zoneAutoZoomTrigger, setZoneAutoZoomTrigger] = useState(0);
+  const zoneSeqRef = useRef(0);
 
   const toolTabs = useMemo(
     () => [
@@ -121,6 +199,10 @@ export default function TerrenoClient() {
     const match = countries.find((country) => country.iso3 === countryIso);
     return match?.country_name || "";
   }, [countries, countryIso]);
+  const zoneCountryLabel = useMemo(() => {
+    const match = countries.find((country) => country.iso3 === zoneCountryIso);
+    return match?.country_name || "";
+  }, [countries, zoneCountryIso]);
 
   useEffect(() => {
     setCountryDeposits([]);
@@ -172,6 +254,59 @@ export default function TerrenoClient() {
 
     return () => controller.abort();
   }, [countryIso]);
+
+  useEffect(() => {
+    setZoneCountryDeposits([]);
+    setZoneCountryError("");
+    setZoneCenter(null);
+    setZoneRadiusKm(10);
+    setZoneResult(null);
+    setZoneAnalysisError("");
+    zoneSeqRef.current += 1;
+
+    if (!zoneCountryIso) return;
+
+    const controller = new AbortController();
+    setZoneCountryLoading(true);
+    fetch(`/api/backend/api/v1/explore/deposits?country_iso3=${zoneCountryIso}&limit=5000`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((rows) => {
+        const parsed = Array.isArray(rows)
+          ? rows
+              .map((item) => ({
+                dep_id: Number(item.dep_id),
+                name: item.name || `Dep. ${item.dep_id}`,
+                latitude: Number(item.latitude),
+                longitude: Number(item.longitude),
+                minerals: String(item.minerals || "")
+                  .split(",")
+                  .map((value) => value.trim())
+                  .filter(Boolean),
+              }))
+              .filter(
+                (item) =>
+                  Number.isFinite(item.dep_id) &&
+                  Number.isFinite(item.latitude) &&
+                  Number.isFinite(item.longitude),
+              )
+          : [];
+        setZoneCountryDeposits(parsed);
+        setZoneAutoZoomTrigger((value) => value + 1);
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        setZoneCountryError(err?.message || "No fue posible cargar depositos del pais seleccionado.");
+      })
+      .finally(() => setZoneCountryLoading(false));
+
+    return () => controller.abort();
+  }, [zoneCountryIso]);
 
   const depositsById = useMemo(() => {
     const map = new Map();
@@ -324,6 +459,79 @@ export default function TerrenoClient() {
 
     return () => clearTimeout(timeoutId);
   }, [activeTool, countryIso, selectedFromId, selectedToId, widthKm, analyzeCorridor]);
+
+  const zoneFeature = useMemo(() => toFeature(zoneResult?.zone_geojson), [zoneResult]);
+  const zoneGeoKey = useMemo(() => JSON.stringify(zoneResult?.zone_geojson || {}), [zoneResult]);
+  const zoneDepositsById = useMemo(() => {
+    const map = new Map();
+    (zoneResult?.deposits || []).forEach((deposit) => {
+      map.set(Number(deposit.dep_id), deposit);
+    });
+    return map;
+  }, [zoneResult]);
+  const zoneMapPoints = useMemo(
+    () => zoneCountryDeposits.map((item) => [item.latitude, item.longitude]),
+    [zoneCountryDeposits],
+  );
+
+  function clearZone() {
+    zoneSeqRef.current += 1;
+    setZoneCenter(null);
+    setZoneRadiusKm(10);
+    setZoneResult(null);
+    setZoneAnalysisError("");
+    setZoneAutoZoomTrigger((value) => value + 1);
+  }
+
+  const analyzeZone = useCallback(async () => {
+    if (!zoneCountryIso) {
+      setZoneAnalysisError("Selecciona un pais para comenzar la exploracion.");
+      return;
+    }
+    if (!zoneCenter) {
+      setZoneAnalysisError("Selecciona una zona haciendo clic en el mapa.");
+      return;
+    }
+
+    const qs = new URLSearchParams({
+      country_iso3: zoneCountryIso,
+      lat: String(zoneCenter.lat),
+      lng: String(zoneCenter.lng),
+      radius_km: String(zoneRadiusKm),
+    });
+
+    const requestId = zoneSeqRef.current + 1;
+    zoneSeqRef.current = requestId;
+    setZoneAnalysisLoading(true);
+    setZoneAnalysisError("");
+    try {
+      const response = await fetch(`/api/backend/api/v1/terrain/zone-interest?${qs.toString()}`, {
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (requestId !== zoneSeqRef.current) return;
+      if (!response.ok) {
+        throw new Error(payload?.detail || `HTTP ${response.status}`);
+      }
+      setZoneResult(payload);
+    } catch (error) {
+      if (requestId !== zoneSeqRef.current) return;
+      setZoneResult(null);
+      setZoneAnalysisError(error?.message || "No fue posible ejecutar el analisis de zona.");
+    } finally {
+      if (requestId !== zoneSeqRef.current) return;
+      setZoneAnalysisLoading(false);
+    }
+  }, [zoneCountryIso, zoneCenter, zoneRadiusKm]);
+
+  useEffect(() => {
+    if (activeTool !== "zone") return;
+    if (!zoneCountryIso || !zoneCenter) return;
+    const timeoutId = setTimeout(() => {
+      void analyzeZone();
+    }, 350);
+    return () => clearTimeout(timeoutId);
+  }, [activeTool, zoneCountryIso, zoneCenter, zoneRadiusKm, analyzeZone]);
 
   function renderActiveTool() {
     if (activeTool === "corridor") {
@@ -571,48 +779,275 @@ export default function TerrenoClient() {
     }
 
     if (activeTool === "zone") {
+      const nearestDeposit = zoneResult?.deposits?.[0] || null;
       return (
         <>
-          <h3>Zona de interes</h3>
-          <p className="muted">
-            Selecciona una zona o punto de interes para identificar depositos cercanos y minerales
-            registrados en el area.
-          </p>
+          <div className={styles.zoneIntroRow}>
+            <p className="muted">
+              Selecciona pais y luego haz clic en el mapa para definir el centro de la zona de interes.
+            </p>
+            <button type="button" className={styles.secondaryBtn} onClick={clearZone}>
+              Limpiar zona
+            </button>
+          </div>
           <div className={styles.controls}>
             <label>
               Pais
-              <PlaceholderSelect
-                options={[
-                  { value: "", label: "Seleccionar pais" },
-                  { value: "cri", label: "Costa Rica (placeholder)" },
-                  { value: "aus", label: "Australia (placeholder)" },
-                ]}
-              />
-            </label>
-            <label>
-              Mineral (opcional)
-              <PlaceholderSelect
-                options={[
-                  { value: "", label: "Todos" },
-                  { value: "gold", label: "Gold (placeholder)" },
-                  { value: "copper", label: "Copper (placeholder)" },
-                ]}
-              />
+              <select value={zoneCountryIso} onChange={(event) => setZoneCountryIso(event.target.value)}>
+                <option value="">Seleccionar pais</option>
+                {countries.map((country) => (
+                  <option key={`zone-${country.country_name}-${country.iso3}`} value={country.iso3 || ""}>
+                    {country.country_name} ({country.iso3 || "N/A"})
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Radio de busqueda (km)
-              <PlaceholderSelect
-                options={[
-                  { value: "5", label: "5 km" },
-                  { value: "15", label: "15 km" },
-                  { value: "30", label: "30 km" },
-                  { value: "60", label: "60 km" },
-                ]}
+              <input
+                type="range"
+                min={1}
+                max={50}
+                step={1}
+                value={zoneRadiusKm}
+                disabled={!zoneCountryIso}
+                onChange={(event) => setZoneRadiusKm(Number(event.target.value) || 10)}
               />
+              <span className={styles.rangeValue}>Radio actual: {formatNumber(zoneRadiusKm)} km</span>
             </label>
-            <button type="button">Buscar en zona</button>
           </div>
-          <div className={styles.placeholderArea}>Espacio reservado para mapa y resultados de zona.</div>
+
+          <div className={styles.selectionInfo}>
+            <p>
+              <strong>Pais:</strong> {zoneCountryLabel || "Sin seleccionar"}
+            </p>
+            <p>
+              <strong>Centro de zona:</strong>{" "}
+              {zoneCenter
+                ? `${formatNumber(zoneCenter.lat, 4)}, ${formatNumber(zoneCenter.lng, 4)}`
+                : "Haz clic en el mapa para seleccionar un punto"}
+            </p>
+          </div>
+
+          {(zoneCountryError || zoneAnalysisError) && (
+            <div className={styles.messageBox}>{zoneCountryError || zoneAnalysisError}</div>
+          )}
+          {!zoneCountryIso && (
+            <p className="muted">Selecciona un pais para comenzar la exploracion.</p>
+          )}
+          {zoneCountryLoading && <p className="muted">Cargando depositos georreferenciados...</p>}
+          {!zoneCountryLoading && zoneCountryIso && !zoneCountryDeposits.length && !zoneCountryError && (
+            <p className="muted">El pais seleccionado no tiene depositos georreferenciados.</p>
+          )}
+          {!zoneCountryLoading && zoneAnalysisLoading && (
+            <p className="muted">Analizando zona automaticamente...</p>
+          )}
+
+          <div className={styles.corridorLayout}>
+            <article className={styles.mapCard}>
+              <h4>Mapa de zona de interes</h4>
+              <div className={styles.mapWrap}>
+                <MapContainer
+                  center={DEFAULT_VIEW}
+                  zoom={DEFAULT_ZOOM}
+                  scrollWheelZoom
+                  preferCanvas
+                  style={{ height: "100%", width: "100%" }}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <ZoneAutoZoom
+                    points={zoneMapPoints}
+                    center={zoneCenter}
+                    radiusKm={zoneRadiusKm}
+                    countryIso={zoneCountryIso}
+                    trigger={zoneAutoZoomTrigger}
+                  />
+                  <ZoneMapPicker
+                    enabled={Boolean(zoneCountryIso)}
+                    onSelect={(center) => {
+                      setZoneCenter(center);
+                      setZoneResult(null);
+                      setZoneAnalysisError("");
+                      setZoneAutoZoomTrigger((value) => value + 1);
+                    }}
+                  />
+
+                  {zoneCenter && (
+                    <>
+                      <Circle
+                        center={[zoneCenter.lat, zoneCenter.lng]}
+                        radius={zoneRadiusKm * 1000}
+                        pathOptions={{
+                          color: "#2563eb",
+                          weight: 2,
+                          fillColor: "#60a5fa",
+                          fillOpacity: 0.16,
+                        }}
+                      />
+                      <CircleMarker
+                        center={[zoneCenter.lat, zoneCenter.lng]}
+                        radius={7}
+                        pathOptions={{
+                          color: "#991b1b",
+                          fillColor: "#ef4444",
+                          fillOpacity: 0.95,
+                          weight: 2,
+                        }}
+                      >
+                        <Tooltip direction="top" offset={[0, -2]}>
+                          <strong>Centro de zona</strong>
+                          <br />
+                          {formatNumber(zoneCenter.lat, 4)}, {formatNumber(zoneCenter.lng, 4)}
+                        </Tooltip>
+                      </CircleMarker>
+                    </>
+                  )}
+
+                  {zoneFeature && (
+                    <GeoJSON
+                      key={`zone-${zoneGeoKey}`}
+                      data={zoneFeature}
+                      style={() => ({
+                        color: "#2563eb",
+                        weight: 1.5,
+                        fillColor: "#60a5fa",
+                        fillOpacity: 0.1,
+                      })}
+                    />
+                  )}
+
+                  {zoneCountryDeposits.map((deposit) => {
+                    const inZone = zoneDepositsById.get(deposit.dep_id);
+                    const mineralsCount = inZone?.minerals?.length || 0;
+                    let markerStyle = {
+                      color: "#1d4ed8",
+                      fillColor: "#60a5fa",
+                      fillOpacity: 0.45,
+                      weight: 1,
+                      radius: 4,
+                    };
+                    if (inZone) {
+                      if (mineralsCount >= 5) {
+                        markerStyle = {
+                          color: "#b45309",
+                          fillColor: "#f59e0b",
+                          fillOpacity: 0.85,
+                          weight: 1.5,
+                          radius: 7,
+                        };
+                      } else if (mineralsCount >= 2) {
+                        markerStyle = {
+                          color: "#1d4ed8",
+                          fillColor: "#38bdf8",
+                          fillOpacity: 0.8,
+                          weight: 1.2,
+                          radius: 6,
+                        };
+                      } else {
+                        markerStyle = {
+                          color: "#0f766e",
+                          fillColor: "#14b8a6",
+                          fillOpacity: 0.78,
+                          weight: 1.2,
+                          radius: 5,
+                        };
+                      }
+                    }
+
+                    return (
+                      <CircleMarker
+                        key={`zone-dep-${deposit.dep_id}`}
+                        center={[deposit.latitude, deposit.longitude]}
+                        radius={markerStyle.radius}
+                        pathOptions={markerStyle}
+                      >
+                        <Tooltip direction="top" offset={[0, -2]}>
+                          <strong>{deposit.name}</strong>
+                          <br />
+                          {inZone
+                            ? `En zona: ${formatNumber(inZone.distance_km, 2)} km al centro`
+                            : "Fuera de la zona"}
+                        </Tooltip>
+                      </CircleMarker>
+                    );
+                  })}
+                </MapContainer>
+              </div>
+              <p className="muted">
+                Este analisis se basa en registros mineralogicos y proximidad espacial. No garantiza la
+                presencia de minerales en campo.
+              </p>
+            </article>
+
+            <article className={styles.resultsCard}>
+              <h4>Resumen de zona</h4>
+              {!zoneResult && (
+                <p className="muted">
+                  Selecciona una zona en el mapa para ejecutar el analisis automaticamente.
+                </p>
+              )}
+              {zoneResult && (
+                <>
+                  <div className={styles.kpisGrid}>
+                    <div>
+                      <strong>Depositos encontrados</strong>
+                      <p>{formatNumber(zoneResult.deposit_count)}</p>
+                    </div>
+                    <div>
+                      <strong>Radio</strong>
+                      <p>{formatNumber(zoneResult.radius_km, 0)} km</p>
+                    </div>
+                    <div>
+                      <strong>Deposito mas cercano</strong>
+                      <p>{nearestDeposit ? nearestDeposit.name : "N/A"}</p>
+                    </div>
+                  </div>
+
+                  {zoneResult.message && <p className="muted">{zoneResult.message}</p>}
+
+                  <section className={styles.resultSection}>
+                    <h5>Ranking de minerales</h5>
+                    <p className="muted">
+                      La intensidad representa la frecuencia del mineral dentro de los depositos encontrados
+                      en la zona seleccionada.
+                    </p>
+                    {zoneResult.minerals?.length ? (
+                      <ul className={styles.rankingList}>
+                        {zoneResult.minerals.map((item) => (
+                          <li key={`zone-ranking-${item.mineral}`}>
+                            <span>{item.mineral}</span>
+                            <span>{formatNumber(item.count)} deps</span>
+                            <span>{formatNumber(item.percentage, 2)}%</span>
+                            <span className={styles[`intensity-${item.intensity}`]}>{item.intensity}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted">No hay minerales registrados para la zona seleccionada.</p>
+                    )}
+                  </section>
+
+                  <section className={styles.resultSection}>
+                    <h5>Depositos dentro de la zona</h5>
+                    <div className={styles.depositsScroll}>
+                      <ul className={styles.depositsList}>
+                        {(zoneResult.deposits || []).map((deposit) => (
+                          <li key={`zone-result-${deposit.dep_id}`}>
+                            <strong>{deposit.name}</strong> - {formatNumber(deposit.distance_km, 2)} km al
+                            centro - Minerales:{" "}
+                            {deposit.minerals?.length ? deposit.minerals.join(", ") : "N/A"}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </section>
+                </>
+              )}
+            </article>
+          </div>
         </>
       );
     }
