@@ -53,10 +53,14 @@ function markerStyleForScore(score) {
   return { color: "#2563eb", fillColor: "#38bdf8", fillOpacity: 0.7, weight: 1, radius: 5 };
 }
 
-function CorridorAutoZoom({ points }) {
+function CorridorAutoZoom({ points, focusMode, trigger }) {
   const map = useMap();
+  const lastTriggerRef = useRef(0);
 
   useEffect(() => {
+    if (trigger === lastTriggerRef.current) return;
+    lastTriggerRef.current = trigger;
+
     if (!points.length) {
       map.setView(DEFAULT_VIEW, DEFAULT_ZOOM, { animate: true });
       return;
@@ -66,8 +70,13 @@ function CorridorAutoZoom({ points }) {
       return;
     }
     const bounds = L.latLngBounds(points);
-    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 8, animate: true });
-  }, [map, points]);
+    const isCorridorFocus = focusMode === "corridor";
+    map.fitBounds(bounds, {
+      padding: isCorridorFocus ? [45, 45] : [30, 30],
+      maxZoom: isCorridorFocus ? 9 : 8,
+      animate: true,
+    });
+  }, [map, points, focusMode, trigger]);
 
   return null;
 }
@@ -86,6 +95,7 @@ export default function TerrenoClient() {
   const [analysisError, setAnalysisError] = useState("");
   const [corridorResult, setCorridorResult] = useState(null);
   const analysisSeqRef = useRef(0);
+  const [autoZoomTrigger, setAutoZoomTrigger] = useState(0);
 
   const toolTabs = useMemo(
     () => [
@@ -172,10 +182,22 @@ export default function TerrenoClient() {
   const selectedFrom = selectedFromId ? depositsById.get(selectedFromId) || null : null;
   const selectedTo = selectedToId ? depositsById.get(selectedToId) || null : null;
 
-  const mapPoints = useMemo(
-    () => countryDeposits.map((item) => [item.latitude, item.longitude]),
-    [countryDeposits],
-  );
+  const mapPoints = useMemo(() => {
+    if (corridorResult?.deposits_in_corridor?.length) {
+      return corridorResult.deposits_in_corridor
+        .map((item) => [Number(item.lat), Number(item.lng)])
+        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+    }
+    if (selectedFrom && selectedTo) {
+      return [
+        [selectedFrom.latitude, selectedFrom.longitude],
+        [selectedTo.latitude, selectedTo.longitude],
+      ];
+    }
+    return countryDeposits.map((item) => [item.latitude, item.longitude]);
+  }, [countryDeposits, corridorResult, selectedFrom, selectedTo]);
+
+  const zoomFocusMode = corridorResult?.deposits_in_corridor?.length ? "corridor" : "country";
 
   const corridorFeature = useMemo(() => toFeature(corridorResult?.corridor_geojson), [corridorResult]);
   const lineFeature = useMemo(() => toFeature(corridorResult?.line_geojson), [corridorResult]);
@@ -199,7 +221,25 @@ export default function TerrenoClient() {
     setWidthKm(2);
     setCorridorResult(null);
     setAnalysisError("");
+    setAutoZoomTrigger((value) => value + 1);
   }
+
+  useEffect(() => {
+    if (activeTool !== "corridor") return;
+    if (!selectedFromId || !selectedToId) return;
+    if (selectedFromId === selectedToId) return;
+    setAutoZoomTrigger((value) => value + 1);
+  }, [activeTool, selectedFromId, selectedToId]);
+
+  useEffect(() => {
+    if (activeTool !== "corridor") return;
+    if (!countryIso) return;
+    if (countryLoading) return;
+    if (!countryDeposits.length) return;
+    if (selectedFromId || selectedToId) return;
+    // Keep initial country auto-zoom behavior when no endpoints are selected yet.
+    setAutoZoomTrigger((value) => value + 1);
+  }, [activeTool, countryIso, countryLoading, countryDeposits.length, selectedFromId, selectedToId]);
 
   function handleDepositClick(deposit) {
     if (!deposit) return;
@@ -364,7 +404,11 @@ export default function TerrenoClient() {
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
-                  <CorridorAutoZoom points={mapPoints} />
+                  <CorridorAutoZoom
+                    points={mapPoints}
+                    focusMode={zoomFocusMode}
+                    trigger={autoZoomTrigger}
+                  />
                   {corridorFeature && (
                     <GeoJSON
                       key={`corridor-${corridorGeoKey}`}
