@@ -1,0 +1,118 @@
+.heroPanel {
+  margin-top: 1rem;
+}
+
+.disclaimer {
+  margin-top: 0.8rem;
+  color: #a8bfd8;
+  font-size: 0.84rem;
+  border: 1px solid rgba(104, 144, 182, 0.25);
+  border-radius: 10px;
+  background: rgba(7, 24, 43, 0.78);
+  padding: 0.65rem 0.75rem;
+}
+
+.controls {
+  margin-top: 0.7rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.controls label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.84rem;
+  color: #a8bfd8;
+}
+
+.controls select {
+  border-radius: 8px;
+  border: 1px solid #244569;
+  background: #081b33;
+  color: #fff;
+  padding: 0.5rem 0.6rem;
+}
+
+.controls button {
+  align-self: end;
+  border-radius: 8px;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  background: #2e86ff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.placeholderArea {
+  margin-top: 0.8rem;
+  border: 1px dashed rgba(104, 144, 182, 0.45);
+  border-radius: 10px;
+  min-height: 90px;
+  padding: 0.7rem;
+  color: #a8bfd8;
+  display: flex;
+  align-items: center;
+}
+
+.placeholderList {
+  margin-top: 0.7rem;
+  border: 1px solid rgba(104, 144, 182, 0.25);
+  border-radius: 10px;
+  background: rgba(7, 24, 43, 0.78);
+  padding: 0.6rem 0.7rem;
+  color: #dbe9f8;
+  font-size: 0.88rem;
+}
+
+.placeholderList p {
+  margin: 0.2rem 0;
+}
+
+.toolTabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.toolTab,
+.toolTabActive {
+  border-radius: 10px;
+  border: 1px solid rgba(104, 144, 182, 0.35);
+  padding: 0.55rem 0.65rem;
+  text-align: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toolTab {
+  background: rgba(9, 31, 56, 0.75);
+  color: #a8bfd8;
+}
+
+.toolTab:hover {
+  border-color: rgba(90, 174, 250, 0.65);
+  color: #fff;
+}
+
+.toolTabActive {
+  background: rgba(39, 108, 194, 0.9);
+  color: #fff;
+  border-color: rgba(90, 174, 250, 0.9);
+}
+
+@media (max-width: 1024px) {
+  .controls {
+    grid-template-columns: 1fr;
+  }
+
+  .toolTabs {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .toolTabs {
+    grid-template-columns: 1fr;
+  }
+}

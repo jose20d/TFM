@@ -16,11 +16,42 @@ import {
   YAxis,
 } from "recharts";
 
-function formatNumber(value) {
-  if (value === null || value === undefined) return "N/A";
+// Instruccion de formato numerico para toda la pagina "Comparar":
+// - Separador de miles: "."
+// - Separador decimal: ","
+// - Nulos/invalidos: "N/A"
+// - PIB: siempre en miles de millones (USD B) con 2 decimales
+const NUMERIC_FORMAT = Object.freeze({
+  thousandSeparator: ".",
+  decimalSeparator: ",",
+  nullLabel: "N/A",
+  gdpUnitLabel: "USD B",
+  gdpDecimals: 2,
+});
+
+function formatNumeric(value, options = {}) {
+  const { decimals = null } = options;
+  if (value === null || value === undefined) return NUMERIC_FORMAT.nullLabel;
   const numeric = Number(value);
-  if (Number.isNaN(numeric)) return String(value);
-  return new Intl.NumberFormat("es-ES").format(numeric);
+  if (!Number.isFinite(numeric)) return NUMERIC_FORMAT.nullLabel;
+  const sign = numeric < 0 ? "-" : "";
+  const absolute = Math.abs(numeric);
+  const base =
+    decimals === null
+      ? (Number.isInteger(absolute) ? String(absolute) : absolute.toFixed(2))
+      : absolute.toFixed(decimals);
+  const [integerPart, decimalPart] = base.split(".");
+  const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, NUMERIC_FORMAT.thousandSeparator);
+  if (!decimalPart) return `${sign}${groupedInteger}`;
+  return `${sign}${groupedInteger}${NUMERIC_FORMAT.decimalSeparator}${decimalPart}`;
+}
+
+function formatNumber(value) {
+  return formatNumeric(value);
+}
+
+function formatBillions(value) {
+  return formatNumeric(value, { decimals: NUMERIC_FORMAT.gdpDecimals });
 }
 
 async function getJson(url) {
@@ -97,7 +128,7 @@ function CountryRadialCard({ row, maxDeposits }) {
         {radialData.map((item) => (
           <p key={`${countryIso}-${item.metric}`}>
             <span className="legend-dot" style={{ background: item.color }} />
-            {item.metric}: {item.raw === null ? "N/A" : formatNumber(item.raw)}
+            {item.metric}: {item.raw === null ? NUMERIC_FORMAT.nullLabel : formatNumber(item.raw)}
             {item.suffix}
           </p>
         ))}
@@ -113,6 +144,10 @@ export default function CompareClient() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [dbUp, setDbUp] = useState(true);
+  const [sortConfig, setSortConfig] = useState({
+    key: "country_name",
+    direction: "asc",
+  });
 
   useEffect(() => {
     Promise.all([
@@ -183,6 +218,37 @@ export default function CompareClient() {
   const canAddMoreCountries = selectedIso.length < 5;
 
   const visibleRows = selectedIso.length < 2 ? [] : rows;
+  const sortedRows = useMemo(() => {
+    const rowsCopy = [...visibleRows];
+    const { key, direction } = sortConfig;
+    const sortOrder = direction === "asc" ? 1 : -1;
+
+    rowsCopy.sort((a, b) => {
+      let aValue;
+      let bValue;
+
+      if (key === "country_name") {
+        aValue = String(a.country_name || "");
+        bValue = String(b.country_name || "");
+      } else {
+        aValue = toNumeric(a[key]);
+        bValue = toNumeric(b[key]);
+      }
+
+      const aMissing = aValue === null || aValue === "";
+      const bMissing = bValue === null || bValue === "";
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        return aValue.localeCompare(bValue, "es") * sortOrder;
+      }
+      return (aValue - bValue) * sortOrder;
+    });
+
+    return rowsCopy;
+  }, [visibleRows, sortConfig]);
 
   const exampleCountries = useMemo(() => {
     const selected = new Set(selectedIso);
@@ -198,7 +264,6 @@ export default function CompareClient() {
       .filter(Boolean);
   }, [countries, selectedIso]);
 
-  const maxGdp = Math.max(1, ...visibleRows.map((row) => Number(row.gdp || 0)));
   const chartRows = visibleRows.slice(0, 5);
   const gdpChartData = chartRows.map((row) => ({
     iso3: row.iso3 || "N/A",
@@ -222,6 +287,31 @@ export default function CompareClient() {
     setSelectedIso((prev) => prev.filter((item) => item !== clean));
   }
 
+  function toggleSort(key) {
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        return {
+          key,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return { key, direction: "asc" };
+    });
+  }
+
+  function sortMarker(key) {
+    if (sortConfig.key !== key) return "↕";
+    return sortConfig.direction === "asc" ? "↑" : "↓";
+  }
+
+  function sortHint(key, label) {
+    if (sortConfig.key !== key) return `Ordenar por ${label} (click para ascendente)`;
+    if (sortConfig.direction === "asc") {
+      return `Orden actual por ${label}: ascendente (click para descendente)`;
+    }
+    return `Orden actual por ${label}: descendente (click para ascendente)`;
+  }
+
   return (
     <div className="page-shell">
       <header className="nav">
@@ -237,7 +327,8 @@ export default function CompareClient() {
           <Link href="/">Inicio</Link>
           <Link href="/explorar">Explorar</Link>
           <Link href="/comparar">Comparar</Link>
-          <a href="#">Analisis</a>
+          <Link href="/analisis">Analisis</Link>
+          <Link href="/terreno">Terreno</Link>
           <a href="#">Consultas</a>
         </nav>
       </header>
@@ -326,46 +417,96 @@ export default function CompareClient() {
                   <table className="compare-table">
                     <thead>
                       <tr>
-                        <th>Pais</th>
+                        <th>
+                          <button
+                            type="button"
+                            className="table-sort-btn"
+                            onClick={() => toggleSort("country_name")}
+                            title={sortHint("country_name", "Pais")}
+                            aria-label={sortHint("country_name", "Pais")}
+                          >
+                            Pais {sortMarker("country_name")}
+                          </button>
+                        </th>
                         <th>
                           <AcronymHint
                             short="ISO"
                             full="Codigo estandar internacional del pais (ISO 3166-1 alfa-3)."
                           />
                         </th>
-                        <th>Depositos</th>
                         <th>
-                          <AcronymHint
-                            short="PIB"
-                            full="Producto Interno Bruto (valor total de bienes y servicios)."
-                          />
+                          <button
+                            type="button"
+                            className="table-sort-btn"
+                            onClick={() => toggleSort("deposits")}
+                            title={sortHint("deposits", "Depositos")}
+                            aria-label={sortHint("deposits", "Depositos")}
+                          >
+                            Depositos {sortMarker("deposits")}
+                          </button>
                         </th>
                         <th>
-                          <AcronymHint
-                            short="IPC"
-                            full="Indice de Percepcion de Corrupcion (0-100, mayor es mejor)."
-                          />
+                          <button
+                            type="button"
+                            className="table-sort-btn"
+                            onClick={() => toggleSort("gdp")}
+                            title={sortHint("gdp", "PIB")}
+                            aria-label={sortHint("gdp", "PIB")}
+                          >
+                            <AcronymHint
+                              short="PIB"
+                              full={`Producto Interno Bruto en miles de millones de dolares (${NUMERIC_FORMAT.gdpUnitLabel}).`}
+                            />{" "}
+                            {sortMarker("gdp")}
+                          </button>
                         </th>
                         <th>
-                          <AcronymHint
-                            short="EFI"
-                            full="Indice de Fragilidad del Estado (menor suele indicar mayor estabilidad)."
-                          />
+                          <button
+                            type="button"
+                            className="table-sort-btn"
+                            onClick={() => toggleSort("cpi")}
+                            title={sortHint("cpi", "IPC")}
+                            aria-label={sortHint("cpi", "IPC")}
+                          >
+                            <AcronymHint
+                              short="IPC"
+                              full="Indice de Percepcion de Corrupcion (0-100, mayor es mejor)."
+                            />{" "}
+                            {sortMarker("cpi")}
+                          </button>
+                        </th>
+                        <th>
+                          <button
+                            type="button"
+                            className="table-sort-btn"
+                            onClick={() => toggleSort("fsi")}
+                            title={sortHint("fsi", "EFI")}
+                            aria-label={sortHint("fsi", "EFI")}
+                          >
+                            <AcronymHint
+                              short="EFI"
+                              full="Indice de Fragilidad del Estado (menor suele indicar mayor estabilidad)."
+                            />{" "}
+                            {sortMarker("fsi")}
+                          </button>
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleRows.map((row) => {
-                        const gdpRatio = Math.max(2, Math.round((Number(row.gdp || 0) / maxGdp) * 100));
+                      {sortedRows.map((row) => {
+                        const gdpBillion = toNumeric(row.gdp) === null ? null : Number(row.gdp) / 1_000_000_000;
                         return (
                           <tr key={row.iso3}>
-                            <td>{row.country_name || "N/A"}</td>
-                            <td>{row.iso3 || row.iso2 || "N/A"}</td>
+                            <td>{row.country_name || NUMERIC_FORMAT.nullLabel}</td>
+                            <td>{row.iso3 || row.iso2 || NUMERIC_FORMAT.nullLabel}</td>
                             <td>{formatNumber(row.deposits)}</td>
                             <td>
                               <div className="gdp-cell">
-                                <span>{formatNumber(row.gdp)}</span>
-                                <span className="gdp-bar" style={{ width: `${gdpRatio}%` }} />
+                                <span>
+                                  {gdpBillion === null
+                                    ? NUMERIC_FORMAT.nullLabel
+                                    : `${formatBillions(gdpBillion)} ${NUMERIC_FORMAT.gdpUnitLabel}`}
+                                </span>
                               </div>
                             </td>
                             <td>{formatNumber(row.cpi)}</td>
@@ -390,13 +531,15 @@ export default function CompareClient() {
 
               <div className="charts-side">
                 <div className="panel chart-panel">
-                  <h3>Comparacion PIB (miles de millones USD)</h3>
+                  <h3>{`Comparacion PIB (${NUMERIC_FORMAT.gdpUnitLabel})`}</h3>
                   <ResponsiveContainer width="100%" height={150}>
                     <BarChart data={gdpChartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a3e55" />
                       <XAxis dataKey="iso3" stroke="#a8bfd8" />
-                      <YAxis stroke="#a8bfd8" />
-                      <Tooltip />
+                      <YAxis stroke="#a8bfd8" tickFormatter={(value) => formatBillions(value)} />
+                      <Tooltip
+                        formatter={(value) => [`${formatBillions(value)} ${NUMERIC_FORMAT.gdpUnitLabel}`, "PIB"]}
+                      />
                       <Bar dataKey="gdpBillion" fill="#2e86ff" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -407,8 +550,8 @@ export default function CompareClient() {
                     <BarChart data={depositsChartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a3e55" />
                       <XAxis dataKey="iso3" stroke="#a8bfd8" />
-                      <YAxis stroke="#a8bfd8" />
-                      <Tooltip />
+                      <YAxis stroke="#a8bfd8" tickFormatter={(value) => formatNumber(value)} />
+                      <Tooltip formatter={(value) => [formatNumber(value), "Depositos"]} />
                       <Bar dataKey="deposits" fill="#42c6b8" />
                     </BarChart>
                   </ResponsiveContainer>

@@ -3,11 +3,68 @@ import Link from "next/link";
 
 const BACKEND_URL = process.env.BACKEND_API_URL || "http://127.0.0.1:8001";
 
+function toNumeric(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  // Soporta formato ES: 95.350.423,17
+  if (/^-?\d{1,3}(\.\d{3})*(,\d+)?$/.test(raw)) {
+    const normalized = raw.replace(/\./g, "").replace(",", ".");
+    const num = Number(normalized);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  // Soporta formato simple con punto o coma decimal
+  if (/^-?\d+([.,]\d+)?$/.test(raw)) {
+    const normalized = raw.replace(",", ".");
+    const num = Number(normalized);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  // Fallback: elimina caracteres no numericos comunes (moneda/unidades)
+  const cleaned = raw.replace(/[^\d,.-]/g, "");
+  if (!cleaned) return null;
+  const normalized = cleaned.includes(",") && cleaned.includes(".")
+    ? cleaned.replace(/\./g, "").replace(",", ".")
+    : cleaned.replace(",", ".");
+  const num = Number(normalized);
+  return Number.isFinite(num) ? num : null;
+}
+
+function formatInteger(value) {
+  const numeric = toNumeric(value);
+  if (numeric === null) return "N/A";
+  const sign = numeric < 0 ? "-" : "";
+  const integerPart = String(Math.trunc(Math.abs(numeric)));
+  const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${sign}${groupedInteger}`;
+}
+
 function formatNumber(value) {
   if (value === null || value === undefined) return "N/A";
-  const numeric = Number(value);
-  if (Number.isNaN(numeric)) return String(value);
-  return new Intl.NumberFormat("es-ES").format(numeric);
+  const numeric = toNumeric(value);
+  if (!Number.isFinite(numeric)) return "N/A";
+  const sign = numeric < 0 ? "-" : "";
+  const absolute = Math.abs(numeric);
+  const base = Number.isInteger(absolute) ? String(absolute) : absolute.toFixed(2);
+  const [integerPart, decimalPart] = base.split(".");
+  const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  if (!decimalPart) return `${sign}${groupedInteger}`;
+  return `${sign}${groupedInteger},${decimalPart}`;
+}
+
+function formatBillions(value) {
+  const numeric = toNumeric(value);
+  if (numeric === null) return "N/A";
+  const billions = numeric / 1_000_000_000;
+  const sign = billions < 0 ? "-" : "";
+  const fixed = Math.abs(billions).toFixed(2);
+  const [integerPart, decimalPart] = fixed.split(".");
+  const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${sign}${groupedInteger},${decimalPart} USD B`;
 }
 
 async function readJson(endpoint, fallback) {
@@ -115,7 +172,8 @@ export default async function Home({ searchParams }) {
         <nav className="menu">
           <Link href="/explorar">Explorar</Link>
           <Link href="/comparar">Comparar</Link>
-          <a href="#">Analisis</a>
+          <Link href="/analisis">Analisis</Link>
+          <Link href="/terreno">Terreno</Link>
           <a href="#">Consultas</a>
           <a href="#">Usuario</a>
         </nav>
@@ -136,11 +194,11 @@ export default async function Home({ searchParams }) {
             <div className="kpi-row">
               <article className="kpi-card">
                 <p className="kpi-label">Paises analizados</p>
-                <p className="kpi-value">{formatNumber(overview.countries_count)}</p>
+                <p className="kpi-value numeric-value">{formatInteger(overview.countries_count)}</p>
               </article>
               <article className="kpi-card">
                 <p className="kpi-label">Depositos minerales</p>
-                <p className="kpi-value">{formatNumber(overview.deposits_count)}</p>
+                <p className="kpi-value numeric-value">{formatInteger(overview.deposits_count)}</p>
               </article>
               <article className="kpi-card">
                 <p className="kpi-label">Minerales principales</p>
@@ -148,11 +206,11 @@ export default async function Home({ searchParams }) {
               </article>
               <article className="kpi-card">
                 <p className="kpi-label">Prom. IPC</p>
-                <p className="kpi-value kpi-accent">{formatNumber(overview.avg_cpi)}</p>
+                <p className="kpi-value kpi-accent numeric-value">{formatNumber(overview.avg_cpi)}</p>
               </article>
               <article className="kpi-card">
                 <p className="kpi-label">Prom. EFI</p>
-                <p className="kpi-value kpi-accent">{formatNumber(overview.avg_fsi)}</p>
+                <p className="kpi-value kpi-accent numeric-value">{formatNumber(overview.avg_fsi)}</p>
               </article>
             </div>
           </div>
@@ -164,7 +222,8 @@ export default async function Home({ searchParams }) {
             <ul className="countries-list">
               {topCountries.map((item) => (
                 <li key={`${item.country_name}-${item.iso3}`}>
-                  <strong>{item.country_name}</strong> ({item.iso3 || "N/A"}) - {formatNumber(item.total_deposits)} depositos
+                  <strong>{item.country_name}</strong> ({item.iso3 || "N/A"}) -{" "}
+                  <span className="numeric-value">{formatInteger(item.total_deposits)}</span> depositos
                 </li>
               ))}
             </ul>
@@ -217,19 +276,19 @@ export default async function Home({ searchParams }) {
               </div>
               <div className="summary-item">
                 <h3>Depositos</h3>
-                <p>{formatNumber(country.deposits_count)}</p>
+                <p className="numeric-value">{formatInteger(country.deposits_count)}</p>
               </div>
               <div className="summary-item">
                 <h3>PIB</h3>
-                <p>{formatNumber(country.gdp)}</p>
+                <p className="numeric-value">{formatBillions(country.gdp)}</p>
               </div>
               <div className="summary-item">
                 <h3>Indice de corrupcion</h3>
-                <p>{formatNumber(country.cpi)}</p>
+                <p className="numeric-value">{formatNumber(country.cpi)}</p>
               </div>
               <div className="summary-item">
                 <h3>Indice de fragilidad</h3>
-                <p>{formatNumber(country.fsi)}</p>
+                <p className="numeric-value">{formatNumber(country.fsi)}</p>
               </div>
             </div>
           </article>
@@ -239,7 +298,8 @@ export default async function Home({ searchParams }) {
             <ul className="minerals-list">
               {topMinerals.map((item) => (
                 <li key={item.commod}>
-                  <strong>{item.commod}</strong> - {formatNumber(item.occurrences)} ocurrencias
+                  <strong>{item.commod}</strong> - <span className="numeric-value">{formatInteger(item.occurrences)}</span>{" "}
+                  ocurrencias
                 </li>
               ))}
             </ul>

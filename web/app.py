@@ -299,6 +299,51 @@ def api_country_summary(iso3: str) -> dict:
     return row
 
 
+@app.get("/api/v1/analysis/country-overview")
+def api_analysis_country_overview() -> list[dict]:
+    """Return country-level metrics for global analysis charts."""
+    sql = """
+        WITH country_bucket AS (
+            SELECT DISTINCT ON (c.iso3)
+                   c.iso3,
+                   c.country_name
+            FROM dim_country c
+            WHERE c.iso3 IS NOT NULL
+              AND TRIM(c.iso3) <> ''
+            ORDER BY c.iso3, LENGTH(c.country_name) DESC, c.country_name
+        ),
+        deposits AS (
+            SELECT c.iso3,
+                   COUNT(*)::int AS total_deposits
+            FROM mrds_location ml
+            JOIN dim_country c ON c.country_id = ml.country_id
+            WHERE c.iso3 IS NOT NULL
+              AND TRIM(c.iso3) <> ''
+            GROUP BY c.iso3
+        ),
+        latest AS (
+            SELECT DISTINCT ON (c.iso3, ci.indicator_code)
+                   c.iso3,
+                   ci.indicator_code,
+                   ci.value
+            FROM country_indicator ci
+            JOIN dim_country c ON c.country_id = ci.country_id
+            WHERE ci.indicator_code IN ('NY.GDP.MKTP.CD', 'CPI', 'RANK')
+            ORDER BY c.iso3, ci.indicator_code, ci.year DESC
+        )
+        SELECT cb.country_name,
+               cb.iso3,
+               COALESCE(d.total_deposits, 0) AS total_deposits,
+               (SELECT value FROM latest WHERE iso3 = cb.iso3 AND indicator_code = 'NY.GDP.MKTP.CD') AS gdp,
+               (SELECT value FROM latest WHERE iso3 = cb.iso3 AND indicator_code = 'CPI') AS cpi,
+               (SELECT value FROM latest WHERE iso3 = cb.iso3 AND indicator_code = 'RANK') AS fsi
+        FROM country_bucket cb
+        LEFT JOIN deposits d ON d.iso3 = cb.iso3
+        ORDER BY cb.country_name
+    """
+    return _fetch_all(sql)
+
+
 @app.get("/api/v1/countries/compare")
 def api_countries_compare(iso3: list[str] = Query(default=["CRI", "CHL", "PER"])) -> list[dict]:
     """Return comparable metrics for a small set of countries."""

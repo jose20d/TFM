@@ -242,6 +242,11 @@ a {
   color: var(--muted);
 }
 
+.numeric-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 .compare-panel {
   margin-top: 1rem;
 }
@@ -281,6 +286,59 @@ a {
 .compare-table th {
   color: var(--muted);
   font-weight: 600;
+}
+
+.compare-table th:nth-child(3),
+.compare-table th:nth-child(4),
+.compare-table th:nth-child(5),
+.compare-table th:nth-child(6),
+.compare-table td:nth-child(3),
+.compare-table td:nth-child(4),
+.compare-table td:nth-child(5),
+.compare-table td:nth-child(6) {
+  text-align: right;
+}
+
+.compare-table td:nth-child(3),
+.compare-table td:nth-child(4),
+.compare-table td:nth-child(5),
+.compare-table td:nth-child(6) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-table td:nth-child(4) .gdp-cell {
+  justify-items: end;
+}
+
+.compare-table tbody tr {
+  transition: background-color 0.16s ease;
+}
+
+.compare-table tbody tr:hover {
+  background: rgba(66, 198, 184, 0.08);
+}
+
+.table-sort-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+}
+
+.table-sort-btn:hover {
+  color: var(--white);
+}
+
+.table-sort-btn:focus-visible {
+  outline: 1px dashed rgba(168, 191, 216, 0.7);
+  outline-offset: 2px;
 }
 
 .acronym-hint {

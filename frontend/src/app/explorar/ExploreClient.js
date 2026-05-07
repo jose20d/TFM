@@ -40,10 +40,15 @@ function MapAutoZoom({ rows, countryIso, loading }) {
       return;
     }
     if (!rows.length) return;
-    const staleRows = rows.some((item) => String(item.iso3 || "").toUpperCase() !== countryIso);
-    if (staleRows) return;
 
-    const points = rows
+    // Use only rows that match the selected country ISO.
+    // This avoids blocking zoom when the result set includes sparse/null ISO rows.
+    const targetRows = rows.filter(
+      (item) => String(item.iso3 || "").toUpperCase() === countryIso,
+    );
+    if (!targetRows.length) return;
+
+    const points = targetRows
       .map((item) => [Number(item.latitude), Number(item.longitude)])
       .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
     if (!points.length) return;
@@ -141,7 +146,8 @@ export default function ExploreClient() {
           <Link href="/">Inicio</Link>
           <Link href="/explorar">Explorar</Link>
           <Link href="/comparar">Comparar</Link>
-          <a href="#">Analisis</a>
+          <Link href="/analisis">Analisis</Link>
+          <Link href="/terreno">Terreno</Link>
           <a href="#">Consultas</a>
         </nav>
       </header>
