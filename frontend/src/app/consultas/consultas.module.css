@@ -1,0 +1,260 @@
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.tabBtn,
+.tabBtnActive {
+  border-radius: 10px;
+  border: 1px solid rgba(104, 144, 182, 0.35);
+  background: rgba(11, 34, 58, 0.82);
+  color: #dbe9f8;
+  font-size: 0.88rem;
+  font-weight: 600;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+.tabBtn:hover {
+  border-color: rgba(90, 174, 250, 0.6);
+}
+
+.tabBtnActive {
+  border-color: rgba(90, 174, 250, 0.8);
+  background: rgba(20, 70, 130, 0.85);
+}
+
+.filtersGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.7rem;
+}
+
+.filtersGridDeposits {
+  display: grid;
+  grid-template-columns:
+    minmax(170px, 1.08fr)
+    minmax(185px, 0.9fr)
+    minmax(170px, 0.82fr)
+    minmax(190px, 1.06fr)
+    minmax(135px, 0.66fr);
+  gap: 0.85rem 1rem;
+  margin-top: 0.7rem;
+}
+
+.filtersGridCombined {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.2fr)
+    minmax(16px, 0.35fr)
+    minmax(180px, 1fr)
+    minmax(180px, 1fr)
+    minmax(220px, 1.25fr)
+    minmax(105px, 120px);
+  gap: 0.85rem 1.1rem;
+  margin-top: 0.7rem;
+  align-items: end;
+}
+
+.filtersGrid label,
+.filtersGridDeposits label,
+.filtersGridCombined label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.86rem;
+  color: #d6e5f5;
+}
+
+.fieldCountry,
+.fieldMineral,
+.fieldStatus,
+.fieldMin,
+.fieldLimit,
+.fieldCombinedCountry,
+.fieldCombinedA,
+.fieldCombinedB,
+.fieldCombinedExclude,
+.fieldCombinedLimit {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.fieldCountry {
+  justify-self: stretch;
+}
+
+.fieldMineral {
+  justify-self: end;
+  width: 94%;
+}
+
+.fieldStatus {
+  justify-self: start;
+  width: 94%;
+}
+
+.fieldMin {
+  justify-self: stretch;
+}
+
+.fieldLimit {
+  justify-self: stretch;
+}
+
+.fieldCombinedCountry { grid-column: 1; }
+.fieldCombinedA { grid-column: 3; }
+.fieldCombinedB { grid-column: 4; }
+.fieldCombinedExclude { grid-column: 5; }
+
+.fieldCombinedLimit {
+  grid-column: 6;
+  width: 100%;
+  min-width: 95px;
+  justify-self: end;
+}
+
+.filtersGrid select,
+.filtersGrid input,
+.filtersGridDeposits select,
+.filtersGridDeposits input,
+.filtersGridCombined select,
+.filtersGridCombined input {
+  border-radius: 8px;
+  border: 1px solid rgba(104, 144, 182, 0.35);
+  background: #081b33;
+  color: #e9f5ff;
+  padding: 0.55rem 0.65rem;
+  min-height: 36px;
+}
+
+.filtersGrid input::placeholder,
+.filtersGridDeposits input::placeholder,
+.filtersGridCombined input::placeholder {
+  color: rgba(171, 196, 220, 0.72);
+}
+
+.actionsRow {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.mutedBtn {
+  border-radius: 10px;
+  border: 1px solid rgba(104, 144, 182, 0.35);
+  background: rgba(9, 31, 56, 0.78);
+  color: #dbe9f8;
+  font-size: 0.84rem;
+  font-weight: 600;
+  min-height: 34px;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+}
+
+.actionsRow button {
+  border-radius: 8px;
+  border: none;
+  padding: 0.55rem 0.85rem;
+  background: #2e86ff;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actionsRow button:hover {
+  filter: brightness(1.05);
+}
+
+.resultWrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.resultHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid rgba(104, 144, 182, 0.2);
+}
+
+.resultCount {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #ebf4ff;
+  font-weight: 600;
+}
+
+.helpText {
+  margin: 0.2rem 0 0;
+}
+
+.summaryText {
+  margin: 0.2rem 0 0.1rem;
+}
+
+.tableWrap {
+  overflow: auto;
+  max-height: 360px;
+  border: 1px solid rgba(104, 144, 182, 0.25);
+  border-radius: 10px;
+  margin-top: 0.2rem;
+}
+
+.compactTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.compactTable thead th {
+  position: sticky;
+  top: 0;
+  background: rgba(9, 31, 56, 0.95);
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid rgba(104, 144, 182, 0.28);
+}
+
+.compactTable tbody td {
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid rgba(104, 144, 182, 0.14);
+  vertical-align: top;
+}
+
+.compactTable tbody tr:hover {
+  background: rgba(33, 81, 128, 0.16);
+}
+
+.smallMap {
+  height: 220px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(104, 144, 182, 0.25);
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 1024px) {
+  .tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .filtersGridDeposits {
+    grid-template-columns: 1fr;
+  }
+
+  .filtersGridCombined {
+    grid-template-columns: 1fr;
+  }
+
+  .filtersGrid {
+    grid-template-columns: 1fr;
+  }
+}

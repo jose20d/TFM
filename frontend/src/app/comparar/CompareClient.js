@@ -339,7 +339,7 @@ export default function CompareClient() {
           <Link href="/comparar">Comparar</Link>
           <Link href="/analisis">Analisis</Link>
           <Link href="/terreno">Terreno</Link>
-          <a href="#">Consultas</a>
+          <Link href="/consultas">Consultas</Link>
         </nav>
       </header>
 
