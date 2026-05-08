@@ -51,6 +51,20 @@ function markerStyleForWeight(weight) {
   return { color: "#1d4ed8", fillColor: "#60a5fa", fillOpacity: 0.7, weight: 1, radius: 5 };
 }
 
+function InfoHint({ text, label }) {
+  return (
+    <span className="acronym-hint" data-tooltip={text} aria-label={text} tabIndex={0}>
+      {label ? (
+        <>
+          {label} <span className="hint-icon">ⓘ</span>
+        </>
+      ) : (
+        <span className="hint-icon">ⓘ</span>
+      )}
+    </span>
+  );
+}
+
 function CorridorAutoZoom({ points, focusMode, trigger }) {
   const map = useMap();
   const lastTriggerRef = useRef(0);
@@ -770,6 +784,12 @@ export default function TerrenoClient() {
               <span className={styles.rangeValue}>{formatNumber(widthKm)} km</span>
             </label>
           </div>
+          <p className="muted">
+            <InfoHint
+              label="Intensidad mineralogica"
+              text="La intensidad refleja frecuencia relativa del mineral dentro del corredor analizado."
+            />
+          </p>
 
           <div className={styles.selectionInfo}>
             <p>
@@ -797,7 +817,12 @@ export default function TerrenoClient() {
 
           <div className={styles.corridorLayout}>
             <article className={styles.mapCard}>
-              <h4>Mapa del corredor</h4>
+              <h4>
+                <InfoHint
+                  label="Mapa del corredor"
+                  text="Area de influencia espacial calculada entre los depositos seleccionados."
+                />
+              </h4>
               <div className={styles.mapWrap}>
                 <MapContainer
                   center={DEFAULT_VIEW}
@@ -879,9 +904,14 @@ export default function TerrenoClient() {
                         <Tooltip direction="top" offset={[0, -2]}>
                           <strong>{deposit.name}</strong>
                           <br />
-                          ID: {deposit.dep_id}
+                          {inCorridor
+                            ? `Distancia al eje: ${formatNumber(inCorridor.distance_to_axis_km, 2)} km`
+                            : "Fuera del corredor"}
                           <br />
-                          {inCorridor ? `Intensidad: ${formatNumber(inCorridor.intensity_score, 2)}` : "Fuera del corredor"}
+                          Minerales:{" "}
+                          {inCorridor?.minerals?.length ? inCorridor.minerals.join(", ") : "N/A"}
+                          <br />
+                          Intensidad: {inCorridor ? formatNumber(inCorridor.intensity_score, 2) : "N/A"}
                         </Tooltip>
                       </CircleMarker>
                     );
@@ -932,7 +962,12 @@ export default function TerrenoClient() {
                   </section>
 
                   <section className={styles.resultSection}>
-                    <h5>Ranking de minerales del corredor</h5>
+                    <h5>
+                      <InfoHint
+                        label="Ranking de minerales del corredor"
+                        text="La intensidad refleja frecuencia relativa del mineral dentro del corredor analizado."
+                      />
+                    </h5>
                     <p className="muted">
                       La intensidad se calcula segun la frecuencia del mineral dentro de los depositos
                       encontrados en el corredor.
@@ -959,7 +994,14 @@ export default function TerrenoClient() {
                       <ul className={styles.depositsList}>
                         {corridorResult.deposits_in_corridor?.map((deposit) => (
                           <li key={`corridor-dep-${deposit.dep_id}`}>
-                            <strong>{deposit.name}</strong> ({deposit.dep_id}) -{" "}
+                            <strong
+                              className="acronym-hint"
+                              data-tooltip={`Distancia: ${formatNumber(deposit.distance_to_axis_km, 2)} km | Intensidad: ${formatNumber(deposit.intensity_score, 2)} | Minerales: ${deposit.minerals?.length ? deposit.minerals.join(", ") : "N/A"}`}
+                              tabIndex={0}
+                            >
+                              {deposit.name}
+                            </strong>{" "}
+                            -{" "}
                             {formatNumber(deposit.distance_to_axis_km, 2)} km al eje - Intensidad{" "}
                             {formatNumber(deposit.intensity_score, 2)} - Minerales:{" "}
                             {deposit.minerals?.length ? deposit.minerals.join(", ") : "N/A"}
@@ -1014,6 +1056,12 @@ export default function TerrenoClient() {
               <span className={styles.rangeValue}>Radio actual: {formatNumber(zoneRadiusKm)} km</span>
             </label>
           </div>
+          <p className="muted">
+            <InfoHint
+              label="Radio de busqueda"
+              text="Radio espacial utilizado para buscar depositos cercanos."
+            />
+          </p>
 
           <div className={styles.selectionInfo}>
             <p>
@@ -1166,7 +1214,7 @@ export default function TerrenoClient() {
                           <strong>{deposit.name}</strong>
                           <br />
                           {inZone
-                            ? `En zona: ${formatNumber(inZone.distance_km, 2)} km al centro`
+                            ? `Deposito registrado dentro de la zona seleccionada (${formatNumber(inZone.distance_km, 2)} km al centro)`
                             : "Fuera de la zona"}
                         </Tooltip>
                       </CircleMarker>
@@ -1207,7 +1255,12 @@ export default function TerrenoClient() {
                   {zoneResult.message && <p className="muted">{zoneResult.message}</p>}
 
                   <section className={styles.resultSection}>
-                    <h5>Ranking de minerales</h5>
+                    <h5>
+                      <InfoHint
+                        label="Ranking de minerales"
+                        text="Frecuencia relativa del mineral dentro de la zona analizada."
+                      />
+                    </h5>
                     <p className="muted">
                       La intensidad representa la frecuencia del mineral dentro de los depositos encontrados
                       en la zona seleccionada.
@@ -1303,7 +1356,12 @@ export default function TerrenoClient() {
 
           <div className={styles.corridorLayout}>
             <article className={styles.mapCard}>
-              <h4>Mapa de intensidad mineralogica</h4>
+              <h4>
+                <InfoHint
+                  label="Mapa de intensidad mineralogica"
+                  text="La concentracion visual representa frecuencia espacial observada del mineral seleccionado."
+                />
+              </h4>
               <div className={styles.mapWrap}>
                 <MapContainer
                   center={DEFAULT_VIEW}
@@ -1368,7 +1426,12 @@ export default function TerrenoClient() {
               </div>
 
               <section className={styles.resultSection}>
-                <h5>Ranking de minerales</h5>
+                <h5>
+                  <InfoHint
+                    label="Ranking de minerales"
+                    text="Porcentaje de depositos del pais donde aparece este mineral."
+                  />
+                </h5>
                 <p className="muted">
                   La intensidad representa la frecuencia relativa del mineral dentro de los depositos
                   registrados del pais seleccionado.
@@ -1384,7 +1447,14 @@ export default function TerrenoClient() {
                         <div className={styles.mineralBarTrack}>
                           <div className={styles.mineralBarFill} style={{ width: `${Math.min(100, item.percentage)}%` }} />
                         </div>
-                        <span className={styles[`intensity-${item.intensity}`]}>{item.intensity}</span>
+                        <span
+                          className={`${styles[`intensity-${item.intensity}`]} acronym-hint`}
+                          data-tooltip="Clasificacion relativa basada en frecuencia observada dentro del pais seleccionado."
+                          aria-label="Clasificacion relativa basada en frecuencia observada dentro del pais seleccionado."
+                          tabIndex={0}
+                        >
+                          {item.intensity}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -1494,7 +1564,12 @@ export default function TerrenoClient() {
 
         <div className={styles.corridorLayout}>
           <article className={styles.mapCard}>
-            <h4>Mapa de potencial exploratorio</h4>
+            <h4>
+              <InfoHint
+                label="Mapa de potencial exploratorio"
+                text="Visualizacion exploratoria basada en registros historicos y proximidad espacial."
+              />
+            </h4>
             <div className={styles.mapWrap}>
               <MapContainer
                 center={DEFAULT_VIEW}
@@ -1551,7 +1626,10 @@ export default function TerrenoClient() {
             </div>
             <p className="muted">
               El potencial exploratorio mostrado se basa unicamente en registros historicos y distribucion
-              espacial observada.
+              espacial observada.{" "}
+              <InfoHint
+                text="Este analisis no representa una prediccion geologica profesional ni garantiza presencia mineral en campo."
+              />
             </p>
           </article>
 
@@ -1573,7 +1651,12 @@ export default function TerrenoClient() {
             </div>
 
             <section className={styles.resultSection}>
-              <h5>Clasificacion espacial</h5>
+              <h5>
+                <InfoHint
+                  label="Clasificacion espacial"
+                  text="Patron estimado a partir de agrupamiento de depositos y frecuencia mineralogica."
+                />
+              </h5>
               <div className={styles.badgesRow}>
                 <span className={styles.commonBadge}>{potentialResult?.spatial_classification || "N/A"}</span>
                 <span className={styles.commonBadge}>{potentialResult?.spatial_pattern || "N/A"}</span>

@@ -76,8 +76,16 @@ function toNumeric(value) {
 
 function AcronymHint({ short, full }) {
   return (
-    <span className="acronym-hint" data-tooltip={full} title={full} tabIndex={0}>
+    <span className="acronym-hint" data-tooltip={full} tabIndex={0}>
       {short}
+    </span>
+  );
+}
+
+function InfoHint({ text }) {
+  return (
+    <span className="acronym-hint" data-tooltip={text} aria-label={text} tabIndex={0}>
+      <span className="hint-icon">ⓘ</span>
     </span>
   );
 }
@@ -102,6 +110,8 @@ function CountryRadialCard({ row, maxDeposits }) {
     <article className="panel radial-country-card">
       <h4>
         {row.country_name || "Pais"} ({countryIso})
+        {" "}
+        <InfoHint text="Resumen visual comparativo de indicadores seleccionados." />
       </h4>
       <div className="radial-chart-wrap">
         <ResponsiveContainer width="100%" height={130}>
@@ -420,9 +430,9 @@ export default function CompareClient() {
                         <th>
                           <button
                             type="button"
-                            className="table-sort-btn"
+                            className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("country_name")}
-                            title={sortHint("country_name", "Pais")}
+                            data-tooltip={sortHint("country_name", "Pais")}
                             aria-label={sortHint("country_name", "Pais")}
                           >
                             Pais {sortMarker("country_name")}
@@ -437,25 +447,30 @@ export default function CompareClient() {
                         <th>
                           <button
                             type="button"
-                            className="table-sort-btn"
+                            className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("deposits")}
-                            title={sortHint("deposits", "Depositos")}
+                            data-tooltip={sortHint("deposits", "Depositos")}
                             aria-label={sortHint("deposits", "Depositos")}
                           >
-                            Depositos {sortMarker("deposits")}
+                            Depositos{" "}
+                            <AcronymHint
+                              short="Dep/PIB"
+                              full="Relacion entre depositos registrados y tamano economico del pais. Permite comparar intensidad relativa y no volumen absoluto."
+                            />{" "}
+                            {sortMarker("deposits")}
                           </button>
                         </th>
                         <th>
                           <button
                             type="button"
-                            className="table-sort-btn"
+                            className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("gdp")}
-                            title={sortHint("gdp", "PIB")}
+                            data-tooltip={sortHint("gdp", "PIB")}
                             aria-label={sortHint("gdp", "PIB")}
                           >
                             <AcronymHint
                               short="PIB"
-                              full={`Producto Interno Bruto en miles de millones de dolares (${NUMERIC_FORMAT.gdpUnitLabel}).`}
+                              full="Producto Interno Bruto utilizado como indicador economico comparativo."
                             />{" "}
                             {sortMarker("gdp")}
                           </button>
@@ -463,14 +478,14 @@ export default function CompareClient() {
                         <th>
                           <button
                             type="button"
-                            className="table-sort-btn"
+                            className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("cpi")}
-                            title={sortHint("cpi", "IPC")}
+                            data-tooltip={sortHint("cpi", "IPC")}
                             aria-label={sortHint("cpi", "IPC")}
                           >
                             <AcronymHint
                               short="IPC"
-                              full="Indice de Percepcion de Corrupcion (0-100, mayor es mejor)."
+                              full="CPI: indice de percepcion de corrupcion. Valores altos indican menor corrupcion percibida."
                             />{" "}
                             {sortMarker("cpi")}
                           </button>
@@ -478,14 +493,14 @@ export default function CompareClient() {
                         <th>
                           <button
                             type="button"
-                            className="table-sort-btn"
+                            className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("fsi")}
-                            title={sortHint("fsi", "EFI")}
+                            data-tooltip={sortHint("fsi", "EFI")}
                             aria-label={sortHint("fsi", "EFI")}
                           >
                             <AcronymHint
                               short="EFI"
-                              full="Indice de Fragilidad del Estado (menor suele indicar mayor estabilidad)."
+                              full="FSI: indice de fragilidad estatal. Valores altos indican mayor fragilidad institucional."
                             />{" "}
                             {sortMarker("fsi")}
                           </button>
@@ -531,7 +546,10 @@ export default function CompareClient() {
 
               <div className="charts-side">
                 <div className="panel chart-panel">
-                  <h3>{`Comparacion PIB (${NUMERIC_FORMAT.gdpUnitLabel})`}</h3>
+                  <h3>
+                    {`Comparacion PIB (${NUMERIC_FORMAT.gdpUnitLabel})`}{" "}
+                    <InfoHint text="Valores exactos disponibles al pasar el cursor sobre cada barra." />
+                  </h3>
                   <ResponsiveContainer width="100%" height={150}>
                     <BarChart data={gdpChartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a3e55" />
@@ -545,7 +563,10 @@ export default function CompareClient() {
                   </ResponsiveContainer>
                 </div>
                 <div className="panel chart-panel">
-                  <h3>Depositos por pais</h3>
+                  <h3>
+                    Depositos por pais{" "}
+                    <InfoHint text="Valores exactos disponibles al pasar el cursor sobre cada barra." />
+                  </h3>
                   <ResponsiveContainer width="100%" height={140}>
                     <BarChart data={depositsChartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a3e55" />

@@ -30,6 +30,20 @@ function formatNumber(value) {
   return new Intl.NumberFormat("es-ES").format(num);
 }
 
+function InfoHint({ text, label }) {
+  return (
+    <span className="acronym-hint" data-tooltip={text} aria-label={text} tabIndex={0}>
+      {label ? (
+        <>
+          {label} <span className="hint-icon">ⓘ</span>
+        </>
+      ) : (
+        <span className="hint-icon">ⓘ</span>
+      )}
+    </span>
+  );
+}
+
 function MapAutoZoom({ rows, countryIso, loading }) {
   const map = useMap();
 
@@ -170,7 +184,11 @@ export default function ExploreClient() {
               onChange={(e) => setMineralInput(e.target.value)}
               placeholder="Mineral (ejemplo: Copper, Gold)"
             />
-            <select value={limitInput} onChange={(e) => setLimitInput(Number(e.target.value) || DEFAULT_LIMIT)}>
+            <select
+              value={limitInput}
+              onChange={(e) => setLimitInput(Number(e.target.value) || DEFAULT_LIMIT)}
+              aria-label="Limite visual utilizado para mantener rendimiento y claridad del mapa."
+            >
               <option value={500}>500 puntos</option>
               <option value={800}>800 puntos</option>
               <option value={1200}>1,200 puntos</option>
@@ -193,6 +211,12 @@ export default function ExploreClient() {
               <p>{formatNumber(rows.length)}</p>
             </div>
           </div>
+          <p className="muted">
+            <InfoHint
+              label="Limite de puntos"
+              text="Limite visual utilizado para mantener rendimiento y claridad del mapa."
+            />
+          </p>
         </section>
 
         <section className="grid">
@@ -222,6 +246,12 @@ export default function ExploreClient() {
                       <strong>{item.name || "Deposito"}</strong>
                       <br />
                       Pais: {item.country_name} ({item.iso3 || "N/A"})
+                      <br />
+                      Minerales: {item.minerals || "N/A"}
+                      <br />
+                      Coordenadas: {formatNumber(item.latitude)}, {formatNumber(item.longitude)}
+                      <br />
+                      Fuente: MRDS
                     </Tooltip>
                   </CircleMarker>
                 ))}
@@ -243,7 +273,14 @@ export default function ExploreClient() {
                 <ul className="countries-list">
                   {rows.map((item) => (
                     <li key={`row-${item.dep_id}`}>
-                      <strong>{item.name || `Dep. ${item.dep_id}`}</strong> - {item.country_name} - {item.minerals || "N/A"}
+                      <strong>{item.name || `Dep. ${item.dep_id}`}</strong> - {item.country_name} -{" "}
+                      <span
+                        className="acronym-hint"
+                        data-tooltip="Minerales asociados registrados en este deposito."
+                        tabIndex={0}
+                      >
+                        {item.minerals || "N/A"}
+                      </span>
                     </li>
                   ))}
                 </ul>

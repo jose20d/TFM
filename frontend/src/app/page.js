@@ -93,6 +93,20 @@ function findCountryByIso(countries, iso3) {
   return countries.find((country) => normalizeTerm(country.iso3) === target);
 }
 
+function InfoHint({ text, label }) {
+  return (
+    <span className="acronym-hint" data-tooltip={text} aria-label={text} tabIndex={0}>
+      {label ? (
+        <>
+          {label} <span className="hint-icon">ⓘ</span>
+        </>
+      ) : (
+        <span className="hint-icon">ⓘ</span>
+      )}
+    </span>
+  );
+}
+
 function resolveCountrySelection(rawTerm, countries, fallbackIso3) {
   const term = normalizeTerm(rawTerm);
   const fallbackCountry = findCountryByIso(countries, fallbackIso3);
@@ -193,11 +207,21 @@ export default async function Home({ searchParams }) {
             </div>
             <div className="kpi-row">
               <article className="kpi-card">
-                <p className="kpi-label">Paises analizados</p>
+                <p className="kpi-label">
+                  <InfoHint
+                    label="Paises analizados"
+                    text="Cantidad de paises con registros integrados desde datasets geologicos y contextuales."
+                  />
+                </p>
                 <p className="kpi-value numeric-value">{formatInteger(overview.countries_count)}</p>
               </article>
               <article className="kpi-card">
-                <p className="kpi-label">Depositos minerales</p>
+                <p className="kpi-label">
+                  <InfoHint
+                    label="Depositos minerales"
+                    text="Total de registros mineralogicos integrados en la plataforma."
+                  />
+                </p>
                 <p className="kpi-value numeric-value">{formatInteger(overview.deposits_count)}</p>
               </article>
               <article className="kpi-card">
@@ -205,11 +229,21 @@ export default async function Home({ searchParams }) {
                 <p className="kpi-value" style={{ fontSize: "1.05rem" }}>{topMineralsLabel}</p>
               </article>
               <article className="kpi-card">
-                <p className="kpi-label">Prom. IPC</p>
+                <p className="kpi-label">
+                  <InfoHint
+                    label="Prom. IPC"
+                    text="Promedio del indice de percepcion de corrupcion (CPI). Valores altos indican menor corrupcion percibida."
+                  />
+                </p>
                 <p className="kpi-value kpi-accent numeric-value">{formatNumber(overview.avg_cpi)}</p>
               </article>
               <article className="kpi-card">
-                <p className="kpi-label">Prom. EFI</p>
+                <p className="kpi-label">
+                  <InfoHint
+                    label="Prom. EFI"
+                    text="Indice de fragilidad estatal. Valores altos representan mayor fragilidad institucional."
+                  />
+                </p>
                 <p className="kpi-value kpi-accent numeric-value">{formatNumber(overview.avg_fsi)}</p>
               </article>
             </div>
@@ -294,11 +328,23 @@ export default async function Home({ searchParams }) {
           </article>
 
           <article className="panel">
-            <h2>Top minerales</h2>
+            <h2>
+              <InfoHint
+                label="Top minerales"
+                text="Mineral registrado en multiples depositos integrados."
+              />
+            </h2>
             <ul className="minerals-list">
               {topMinerals.map((item) => (
                 <li key={item.commod}>
-                  <strong>{item.commod}</strong> - <span className="numeric-value">{formatInteger(item.occurrences)}</span>{" "}
+                  <strong
+                    className="acronym-hint"
+                    data-tooltip="Mineral registrado en multiples depositos integrados."
+                    tabIndex={0}
+                  >
+                    {item.commod}
+                  </strong>{" "}
+                  - <span className="numeric-value">{formatInteger(item.occurrences)}</span>{" "}
                   ocurrencias
                 </li>
               ))}

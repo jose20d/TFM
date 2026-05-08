@@ -80,6 +80,20 @@ function AnalysisTooltip({ active, payload, mode }) {
   );
 }
 
+function InfoHint({ text, label }) {
+  return (
+    <span className="acronym-hint" data-tooltip={text} aria-label={text} tabIndex={0}>
+      {label ? (
+        <>
+          {label} <span className="hint-icon">ⓘ</span>
+        </>
+      ) : (
+        <span className="hint-icon">ⓘ</span>
+      )}
+    </span>
+  );
+}
+
 async function getJson(url) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -225,7 +239,12 @@ export default function AnalysisClient() {
 
         <section className={styles.chartsGrid}>
           <article className="panel">
-            <h3>PIB vs depositos por pais (escala log)</h3>
+            <h3>
+              <InfoHint
+                label="PIB vs depositos por pais (escala log)"
+                text="La escala logaritmica reduce el impacto de valores extremos para mejorar la visualizacion comparativa."
+              />
+            </h3>
             {loading ? (
               <p className="muted">Cargando datos...</p>
             ) : (
@@ -263,10 +282,21 @@ export default function AnalysisClient() {
                 </ScatterChart>
               </ResponsiveContainer>
             )}
+            <p className="muted">
+              <InfoHint
+                label="Leyenda CPI"
+                text="Rojo = alta corrupcion percibida; Amarillo = nivel medio; Verde = baja corrupcion percibida."
+              />
+            </p>
           </article>
 
           <article className="panel">
-            <h3>FSI vs depositos por pais (escala log)</h3>
+            <h3>
+              <InfoHint
+                label="FSI vs depositos por pais (escala log)"
+                text="La escala logaritmica reduce el impacto de valores extremos para mejorar la visualizacion comparativa."
+              />
+            </h3>
             {loading ? (
               <p className="muted">Cargando datos...</p>
             ) : (
@@ -304,6 +334,12 @@ export default function AnalysisClient() {
                 </ScatterChart>
               </ResponsiveContainer>
             )}
+            <p className="muted">
+              <InfoHint
+                label="Leyenda CPI"
+                text="Rojo = alta corrupcion percibida; Amarillo = nivel medio; Verde = baja corrupcion percibida."
+              />
+            </p>
           </article>
         </section>
       </main>
