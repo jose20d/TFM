@@ -1124,3 +1124,354 @@ def api_terrain_frequent_minerals(
         "available_minerals": available_sorted,
         "points_geojson": points_geojson,
     }
+
+
+@app.get("/api/v1/terrain/exploratory-potential")
+def api_terrain_exploratory_potential(
+    country_iso3: str = Query(...),
+    mineral: str = Query(...),
+    intensity_level: str = Query(default="medium"),
+) -> dict:
+    """Return exploratory spatial concentration patterns for a selected mineral."""
+    iso3 = (country_iso3 or "").strip().upper()
+    if len(iso3) != 3:
+        raise HTTPException(status_code=400, detail="country_iso3 must be a valid ISO3 code.")
+    mineral_target = (mineral or "").strip()
+    if not mineral_target:
+        raise HTTPException(status_code=400, detail="mineral is required.")
+    level = (intensity_level or "medium").strip().lower()
+    if level not in {"low", "medium", "high"}:
+        raise HTTPException(status_code=400, detail="intensity_level must be one of: low, medium, high.")
+
+    settings_by_level = {
+        # Menor sensibilidad: agrupa mas (eps alto, minpoints bajo).
+        "low": {"radius_km": 22.0, "min_points": 2},
+        "medium": {"radius_km": 12.0, "min_points": 3},
+        # Mayor sensibilidad: agrupa menos (eps bajo, minpoints mayor).
+        "high": {"radius_km": 6.0, "min_points": 4},
+    }
+    level_settings = settings_by_level[level]
+    radius_km = level_settings["radius_km"]
+    min_points = level_settings["min_points"]
+    radius_m = radius_km * 1000.0
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.country_name
+                FROM dim_country c
+                WHERE c.iso3 = %s
+                ORDER BY LENGTH(c.country_name) DESC, c.country_name
+                LIMIT 1
+                """,
+                (iso3,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"Country with ISO3 '{iso3}' was not found.")
+            country_name = row[0]
+
+            cur.execute(
+                """
+                WITH target_points AS (
+                    SELECT
+                        d.dep_id,
+                        COALESCE(d.name, CONCAT('Dep. ', d.dep_id::text)) AS name,
+                        d.latitude AS lat,
+                        d.longitude AS lng,
+                        COALESCE(NULLIF(TRIM(l.region), ''), NULLIF(TRIM(l.state_prov), ''), 'Sin region') AS region,
+                        ST_Transform(ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326), 3857) AS geom_3857,
+                        ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326) AS geom_4326
+                    FROM mrds_deposit d
+                    JOIN mrds_location l ON l.dep_id = d.dep_id
+                    JOIN dim_country c ON c.country_id = l.country_id
+                    WHERE c.iso3 = %s
+                      AND d.latitude IS NOT NULL
+                      AND d.longitude IS NOT NULL
+                      AND EXISTS (
+                        SELECT 1
+                        FROM mrds_commodity mc
+                        WHERE mc.dep_id = d.dep_id
+                          AND mc.commod IS NOT NULL
+                          AND TRIM(mc.commod) <> ''
+                          AND TRIM(mc.commod) ILIKE ('%%' || %s || '%%')
+                      )
+                )
+                SELECT dep_id, name, lat, lng, region
+                FROM target_points
+                ORDER BY dep_id
+                """,
+                (iso3, mineral_target),
+            )
+            deposit_rows = cur.fetchall()
+
+            if len(deposit_rows) < 2:
+                return {
+                    "country": {"iso3": iso3, "name": country_name},
+                    "mineral": mineral_target,
+                    "intensity_level": level,
+                    "radius_km": radius_km,
+                    "total_deposits": len(deposit_rows),
+                    "spatial_classification": "concentracion dispersa",
+                    "spatial_pattern": "insuficiente",
+                    "clusters": [],
+                    "heat_points": [],
+                    "top_regions": [],
+                    "points_geojson": {},
+                    "message": "No se encontraron suficientes registros para identificar patrones espaciales.",
+                }
+
+            cur.execute(
+                """
+                WITH target_points AS (
+                    SELECT
+                        d.dep_id,
+                        COALESCE(d.name, CONCAT('Dep. ', d.dep_id::text)) AS name,
+                        d.latitude AS lat,
+                        d.longitude AS lng,
+                        COALESCE(NULLIF(TRIM(l.region), ''), NULLIF(TRIM(l.state_prov), ''), 'Sin region') AS region,
+                        ST_Transform(ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326), 3857) AS geom_3857,
+                        ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326) AS geom_4326
+                    FROM mrds_deposit d
+                    JOIN mrds_location l ON l.dep_id = d.dep_id
+                    JOIN dim_country c ON c.country_id = l.country_id
+                    WHERE c.iso3 = %s
+                      AND d.latitude IS NOT NULL
+                      AND d.longitude IS NOT NULL
+                      AND EXISTS (
+                        SELECT 1
+                        FROM mrds_commodity mc
+                        WHERE mc.dep_id = d.dep_id
+                          AND mc.commod IS NOT NULL
+                          AND TRIM(mc.commod) <> ''
+                          AND TRIM(mc.commod) ILIKE ('%%' || %s || '%%')
+                      )
+                ),
+                clustered AS (
+                    SELECT
+                        dep_id,
+                        name,
+                        lat,
+                        lng,
+                        region,
+                        geom_4326,
+                        ST_ClusterDBSCAN(geom_3857, eps := %s, minpoints := %s) OVER () AS cluster_id
+                    FROM target_points
+                )
+                SELECT
+                    COALESCE(cluster_id, -1) AS cluster_id,
+                    COUNT(*) AS deposit_count,
+                    ST_AsGeoJSON(ST_Collect(geom_4326)) AS cluster_points_geojson,
+                    ST_AsGeoJSON(ST_ConvexHull(ST_Collect(geom_4326))) AS cluster_hull_geojson,
+                    ST_Y(ST_Centroid(ST_Collect(geom_4326))) AS centroid_lat,
+                    ST_X(ST_Centroid(ST_Collect(geom_4326))) AS centroid_lng
+                FROM clustered
+                GROUP BY COALESCE(cluster_id, -1)
+                ORDER BY deposit_count DESC
+                """,
+                (iso3, mineral_target, radius_m, min_points),
+            )
+            cluster_rows = cur.fetchall()
+
+            cur.execute(
+                """
+                WITH target_points AS (
+                    SELECT
+                        d.dep_id,
+                        COALESCE(d.name, CONCAT('Dep. ', d.dep_id::text)) AS name,
+                        d.latitude AS lat,
+                        d.longitude AS lng,
+                        COALESCE(NULLIF(TRIM(l.region), ''), NULLIF(TRIM(l.state_prov), ''), 'Sin region') AS region,
+                        ST_Transform(ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326), 3857) AS geom_3857
+                    FROM mrds_deposit d
+                    JOIN mrds_location l ON l.dep_id = d.dep_id
+                    JOIN dim_country c ON c.country_id = l.country_id
+                    WHERE c.iso3 = %s
+                      AND d.latitude IS NOT NULL
+                      AND d.longitude IS NOT NULL
+                      AND EXISTS (
+                        SELECT 1
+                        FROM mrds_commodity mc
+                        WHERE mc.dep_id = d.dep_id
+                          AND mc.commod IS NOT NULL
+                          AND TRIM(mc.commod) <> ''
+                          AND TRIM(mc.commod) ILIKE ('%%' || %s || '%%')
+                      )
+                )
+                SELECT dep_id, COALESCE(ST_ClusterDBSCAN(geom_3857, eps := %s, minpoints := %s) OVER (), -1) AS cluster_id
+                FROM target_points
+                """,
+                (iso3, mineral_target, radius_m, min_points),
+            )
+            cluster_detail_rows = cur.fetchall()
+
+            cur.execute(
+                """
+                WITH target_points AS (
+                    SELECT
+                        d.dep_id,
+                        COALESCE(d.name, CONCAT('Dep. ', d.dep_id::text)) AS name,
+                        d.latitude AS lat,
+                        d.longitude AS lng,
+                        COALESCE(NULLIF(TRIM(l.region), ''), NULLIF(TRIM(l.state_prov), ''), 'Sin region') AS region
+                    FROM mrds_deposit d
+                    JOIN mrds_location l ON l.dep_id = d.dep_id
+                    JOIN dim_country c ON c.country_id = l.country_id
+                    WHERE c.iso3 = %s
+                      AND d.latitude IS NOT NULL
+                      AND d.longitude IS NOT NULL
+                      AND EXISTS (
+                        SELECT 1
+                        FROM mrds_commodity mc
+                        WHERE mc.dep_id = d.dep_id
+                          AND mc.commod IS NOT NULL
+                          AND TRIM(mc.commod) <> ''
+                          AND TRIM(mc.commod) ILIKE ('%%' || %s || '%%')
+                      )
+                )
+                SELECT region, COUNT(*) AS deposit_count
+                FROM target_points
+                GROUP BY region
+                ORDER BY deposit_count DESC, region
+                LIMIT 10
+                """,
+                (iso3, mineral_target),
+            )
+            top_region_rows = cur.fetchall()
+
+            cur.execute(
+                """
+                WITH target_points AS (
+                    SELECT
+                        d.dep_id,
+                        ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326)::geography AS geog
+                    FROM mrds_deposit d
+                    JOIN mrds_location l ON l.dep_id = d.dep_id
+                    JOIN dim_country c ON c.country_id = l.country_id
+                    WHERE c.iso3 = %s
+                      AND d.latitude IS NOT NULL
+                      AND d.longitude IS NOT NULL
+                      AND EXISTS (
+                        SELECT 1
+                        FROM mrds_commodity mc
+                        WHERE mc.dep_id = d.dep_id
+                          AND mc.commod IS NOT NULL
+                          AND TRIM(mc.commod) <> ''
+                          AND TRIM(mc.commod) ILIKE ('%%' || %s || '%%')
+                      )
+                ),
+                nearest AS (
+                    SELECT
+                        a.dep_id,
+                        MIN(ST_Distance(a.geog, b.geog)) AS nearest_dist_m
+                    FROM target_points a
+                    JOIN target_points b ON a.dep_id <> b.dep_id
+                    GROUP BY a.dep_id
+                )
+                SELECT ROUND(AVG(nearest_dist_m)::numeric, 2) AS avg_nearest_m
+                FROM nearest
+                """,
+                (iso3, mineral_target),
+            )
+            nearest_row = cur.fetchone()
+            avg_nearest_m = float(nearest_row[0] or 0.0)
+
+            cur.execute(
+                """
+                WITH target_points AS (
+                    SELECT ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326) AS geom
+                    FROM mrds_deposit d
+                    JOIN mrds_location l ON l.dep_id = d.dep_id
+                    JOIN dim_country c ON c.country_id = l.country_id
+                    WHERE c.iso3 = %s
+                      AND d.latitude IS NOT NULL
+                      AND d.longitude IS NOT NULL
+                      AND EXISTS (
+                        SELECT 1
+                        FROM mrds_commodity mc
+                        WHERE mc.dep_id = d.dep_id
+                          AND mc.commod IS NOT NULL
+                          AND TRIM(mc.commod) <> ''
+                          AND TRIM(mc.commod) ILIKE ('%%' || %s || '%%')
+                      )
+                )
+                SELECT ST_AsGeoJSON(ST_Collect(geom)) AS points_geojson
+                FROM target_points
+                """,
+                (iso3, mineral_target),
+            )
+            points_row = cur.fetchone()
+            points_geojson = _safe_geojson(points_row[0] if points_row else None)
+
+    total_deposits = len(deposit_rows)
+    clustered_deposits = sum(int(row[1]) for row in cluster_rows if int(row[0]) != -1)
+    clustered_ratio = (clustered_deposits / total_deposits) if total_deposits else 0.0
+    if clustered_ratio >= 0.6:
+        spatial_classification = "concentracion alta"
+        spatial_pattern = "agrupado"
+    elif clustered_ratio >= 0.3:
+        spatial_classification = "concentracion media"
+        spatial_pattern = "mixto"
+    else:
+        spatial_classification = "concentracion dispersa"
+        spatial_pattern = "disperso"
+
+    max_cluster_size = max((int(row[1]) for row in cluster_rows), default=1)
+    cluster_size_by_id = {int(cluster_id): int(dep_count) for cluster_id, dep_count, *_ in cluster_rows}
+    cluster_by_deposit = {int(dep_id): int(cluster_id) for dep_id, cluster_id in cluster_detail_rows}
+    heat_points = []
+    for dep_id, name, dep_lat, dep_lng, region in deposit_rows:
+        cluster_id = cluster_by_deposit.get(int(dep_id), -1)
+        local_count = cluster_size_by_id.get(cluster_id, 1)
+        weight = min(1.0, local_count / max_cluster_size) if max_cluster_size else 0.0
+        heat_points.append(
+            {
+                "dep_name": name,
+                "lat": float(dep_lat),
+                "lng": float(dep_lng),
+                "weight": round(weight, 3),
+                "mineral": mineral_target,
+                "region": region,
+                "cluster_id": int(cluster_id),
+                "cluster_size": int(local_count),
+            }
+        )
+
+    clusters = []
+    for cluster_id, deposit_count, cluster_points_geojson, cluster_hull_geojson, centroid_lat, centroid_lng in cluster_rows:
+        clusters.append(
+            {
+                "cluster_id": int(cluster_id),
+                "deposit_count": int(deposit_count),
+                "centroid": {"lat": float(centroid_lat), "lng": float(centroid_lng)},
+                "points_geojson": _safe_geojson(cluster_points_geojson),
+                "hull_geojson": _safe_geojson(cluster_hull_geojson),
+            }
+        )
+
+    top_regions = [
+        {"region": region, "deposit_count": int(dep_count)}
+        for region, dep_count in top_region_rows
+    ]
+
+    return {
+        "country": {"iso3": iso3, "name": country_name},
+        "mineral": mineral_target,
+        "intensity_level": level,
+        "sensitivity_level": level,
+        "radius_km": radius_km,
+        "cluster_min_points": min_points,
+        "total_deposits": total_deposits,
+        "spatial_classification": spatial_classification,
+        "spatial_pattern": spatial_pattern,
+        "avg_nearest_distance_km": round(avg_nearest_m / 1000.0, 3),
+        "clusters": clusters,
+        "top_regions": top_regions,
+        "heat_points": heat_points,
+        "points_geojson": points_geojson,
+        "explanation": (
+            "Las zonas resaltadas representan concentraciones espaciales de registros mineralogicos "
+            "asociados al mineral seleccionado."
+        ),
+    }

@@ -16,18 +16,6 @@ L.Icon.Default.mergeOptions({
 const DEFAULT_VIEW = [15, -20];
 const DEFAULT_ZOOM = 2;
 
-function PlaceholderSelect({ options }) {
-  return (
-    <select>
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  );
-}
-
 function formatNumber(value, decimals = 0) {
   if (value === null || value === undefined) return "N/A";
   const num = Number(value);
@@ -187,11 +175,18 @@ export default function TerrenoClient() {
   const [freqCountryIso, setFreqCountryIso] = useState("");
   const [freqMineral, setFreqMineral] = useState("");
   const [freqLimit, setFreqLimit] = useState(20);
-  const [freqShowAll, setFreqShowAll] = useState(false);
   const [freqLoading, setFreqLoading] = useState(false);
   const [freqError, setFreqError] = useState("");
   const [freqResult, setFreqResult] = useState(null);
   const [freqAutoZoomTrigger, setFreqAutoZoomTrigger] = useState(0);
+  const [potentialCountryIso, setPotentialCountryIso] = useState("");
+  const [potentialMineral, setPotentialMineral] = useState("");
+  const [potentialMineralOptions, setPotentialMineralOptions] = useState([]);
+  const [potentialIntensity, setPotentialIntensity] = useState("medium");
+  const [potentialLoading, setPotentialLoading] = useState(false);
+  const [potentialError, setPotentialError] = useState("");
+  const [potentialResult, setPotentialResult] = useState(null);
+  const [potentialAutoZoomTrigger, setPotentialAutoZoomTrigger] = useState(0);
 
   const toolTabs = useMemo(
     () => [
@@ -225,6 +220,10 @@ export default function TerrenoClient() {
     const match = countries.find((country) => country.iso3 === freqCountryIso);
     return match?.country_name || "";
   }, [countries, freqCountryIso]);
+  const potentialCountryLabel = useMemo(() => {
+    const match = countries.find((country) => country.iso3 === potentialCountryIso);
+    return match?.country_name || "";
+  }, [countries, potentialCountryIso]);
 
   useEffect(() => {
     setCountryDeposits([]);
@@ -336,6 +335,48 @@ export default function TerrenoClient() {
     setFreqError("");
     setFreqAutoZoomTrigger((value) => value + 1);
   }, [freqCountryIso]);
+
+  useEffect(() => {
+    setPotentialResult(null);
+    setPotentialError("");
+    setPotentialAutoZoomTrigger((value) => value + 1);
+  }, [potentialCountryIso, potentialMineral, potentialIntensity]);
+
+  useEffect(() => {
+    setPotentialMineralOptions([]);
+    setPotentialMineral("");
+    if (!potentialCountryIso) return;
+
+    const controller = new AbortController();
+    fetch(
+      `/api/backend/api/v1/terrain/frequent-minerals?country_iso3=${potentialCountryIso}&show_all=true&limit=50`,
+      { cache: "no-store", signal: controller.signal },
+    )
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((data) => {
+        const options = Array.isArray(data?.available_minerals)
+          ? data.available_minerals
+              .map((item) => {
+                if (typeof item === "string") return item;
+                if (item && typeof item === "object") return item.mineral || "";
+                return "";
+              })
+              .map((value) => String(value).trim())
+              .filter(Boolean)
+          : [];
+        setPotentialMineralOptions(options);
+        if (options.length) setPotentialMineral(options[0]);
+      })
+      .catch((error) => {
+        if (error?.name === "AbortError") return;
+        setPotentialMineralOptions([]);
+      });
+
+    return () => controller.abort();
+  }, [potentialCountryIso]);
 
   const depositsById = useMemo(() => {
     const map = new Map();
@@ -510,6 +551,53 @@ export default function TerrenoClient() {
     }
     return [];
   }, [freqResult]);
+  const potentialVisibleHeatPoints = useMemo(() => {
+    const points = Array.isArray(potentialResult?.heat_points) ? potentialResult.heat_points : [];
+    if (!points.length) return [];
+
+    const minClusterSizeBySensitivity = {
+      low: 2,
+      medium: 4,
+      high: 6,
+    };
+    const threshold = minClusterSizeBySensitivity[potentialIntensity] || 4;
+    if (potentialIntensity === "low") {
+      return points;
+    }
+    const filtered = points.filter(
+      (point) => Number(point.cluster_id) !== -1 && Number(point.cluster_size || 0) >= threshold,
+    );
+    return filtered;
+  }, [potentialResult, potentialIntensity]);
+  const potentialMapPoints = useMemo(() => {
+    const points = potentialVisibleHeatPoints;
+    if (points?.length) {
+      return points
+        .map((point) => [Number(point.lat), Number(point.lng)])
+        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+    }
+    return [];
+  }, [potentialVisibleHeatPoints]);
+  const potentialHullFeatures = useMemo(() => {
+    const clusters = Array.isArray(potentialResult?.clusters) ? potentialResult.clusters : [];
+    const minHullClusterBySensitivity = {
+      low: 2,
+      medium: 4,
+      high: 6,
+    };
+    const threshold = minHullClusterBySensitivity[potentialIntensity] || 4;
+    const ranked = clusters
+      .filter((cluster) => cluster?.cluster_id !== -1 && cluster?.hull_geojson)
+      .sort((a, b) => Number(b.deposit_count || 0) - Number(a.deposit_count || 0));
+    const filtered = ranked.filter((cluster) => Number(cluster.deposit_count || 0) >= threshold);
+    const selected = filtered.length ? filtered : ranked.slice(0, 1);
+    return selected
+      .map((cluster) => ({
+        feature: toFeature(cluster.hull_geojson),
+        clusterId: cluster.cluster_id,
+      }))
+      .filter((item) => item.feature);
+  }, [potentialResult, potentialIntensity]);
 
   useEffect(() => {
     if (activeTool !== "minerals") return;
@@ -522,7 +610,6 @@ export default function TerrenoClient() {
         const qs = new URLSearchParams({
           country_iso3: freqCountryIso,
           limit: String(freqLimit),
-          show_all: String(freqShowAll),
         });
         if (freqMineral.trim()) qs.set("mineral", freqMineral.trim());
         const response = await fetch(`/api/backend/api/v1/terrain/frequent-minerals?${qs.toString()}`, {
@@ -546,7 +633,44 @@ export default function TerrenoClient() {
       controller.abort();
       clearTimeout(timeoutId);
     };
-  }, [activeTool, freqCountryIso, freqMineral, freqLimit, freqShowAll]);
+  }, [activeTool, freqCountryIso, freqMineral, freqLimit]);
+
+  useEffect(() => {
+    if (activeTool !== "potential") return;
+    if (!potentialCountryIso || !potentialMineral.trim()) return;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(async () => {
+      setPotentialLoading(true);
+      setPotentialError("");
+      try {
+        const qs = new URLSearchParams({
+          country_iso3: potentialCountryIso,
+          mineral: potentialMineral.trim(),
+          intensity_level: potentialIntensity,
+        });
+        const response = await fetch(`/api/backend/api/v1/terrain/exploratory-potential?${qs.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`);
+        setPotentialResult(payload);
+        setPotentialAutoZoomTrigger((value) => value + 1);
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        setPotentialResult(null);
+        setPotentialError(error?.message || "No fue posible analizar el potencial exploratorio.");
+      } finally {
+        setPotentialLoading(false);
+      }
+    }, 280);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [activeTool, potentialCountryIso, potentialMineral, potentialIntensity]);
 
   function clearZone() {
     zoneSeqRef.current += 1;
@@ -1164,14 +1288,6 @@ export default function TerrenoClient() {
                 <option value={50}>50</option>
               </select>
             </label>
-            <label className={styles.toggleLabel}>
-              <span>Mostrar todos los minerales</span>
-              <input
-                type="checkbox"
-                checked={freqShowAll}
-                onChange={(event) => setFreqShowAll(event.target.checked)}
-              />
-            </label>
           </div>
 
           {!freqCountryIso && (
@@ -1319,34 +1435,175 @@ export default function TerrenoClient() {
 
     return (
       <>
-        <h3>Potencial exploratorio</h3>
         <p className="muted">
-          Visualizacion experimental para identificar zonas con mayor concentracion de registros
-          mineralogicos.
+          Analiza patrones espaciales historicos para identificar concentraciones relativas de registros
+          asociados al mineral seleccionado.
         </p>
         <div className={styles.controls}>
           <label>
-            Mineral objetivo
-            <PlaceholderSelect
-              options={[
-                { value: "", label: "Seleccionar mineral" },
-                { value: "gold", label: "Gold (placeholder)" },
-                { value: "nickel", label: "Nickel (placeholder)" },
-              ]}
-            />
+            Pais
+            <select value={potentialCountryIso} onChange={(event) => setPotentialCountryIso(event.target.value)}>
+              <option value="">Seleccionar pais</option>
+              {countries.map((country) => (
+                <option key={`pot-${country.country_name}-${country.iso3}`} value={country.iso3 || ""}>
+                  {country.country_name} ({country.iso3 || "N/A"})
+                </option>
+              ))}
+            </select>
           </label>
           <label>
-            Intensidad / radio
-            <PlaceholderSelect
-              options={[
-                { value: "low", label: "Baja (placeholder)" },
-                { value: "mid", label: "Media (placeholder)" },
-                { value: "high", label: "Alta (placeholder)" },
-              ]}
-            />
+            Mineral objetivo
+            <select value={potentialMineral} onChange={(event) => setPotentialMineral(event.target.value)}>
+              <option value="">Seleccionar mineral</option>
+              {potentialMineralOptions.map((option) => (
+                <option key={`pot-min-${option}`} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Sensibilidad espacial
+            <select value={potentialIntensity} onChange={(event) => setPotentialIntensity(event.target.value)}>
+              <option value="low">Baja (mas agrupaciones)</option>
+              <option value="medium">Media</option>
+              <option value="high">Alta (menos agrupaciones)</option>
+            </select>
           </label>
         </div>
-        <div className={styles.placeholderArea}>Espacio reservado para heatmap o capa geoespacial.</div>
+        {potentialCountryIso && !potentialMineralOptions.length && (
+          <p className="muted">No hay minerales disponibles para este pais en los registros actuales.</p>
+        )}
+        {!potentialCountryIso || !potentialMineral.trim() ? (
+          <p className="muted">Selecciona un pais y un mineral para analizar patrones espaciales.</p>
+        ) : null}
+        {potentialError && <div className={styles.messageBox}>{potentialError}</div>}
+        {potentialLoading && <p className="muted">Analizando patron espacial...</p>}
+        {!potentialLoading && potentialResult?.message && (
+          <p className="muted">{potentialResult.message}</p>
+        )}
+        {!potentialLoading &&
+          !potentialResult?.message &&
+          potentialResult?.total_deposits > 0 &&
+          potentialVisibleHeatPoints.length === 0 && (
+            <p className="muted">
+              Con esta sensibilidad no se detectaron agrupaciones robustas. Prueba con sensibilidad media o
+              baja.
+            </p>
+          )}
+
+        <div className={styles.corridorLayout}>
+          <article className={styles.mapCard}>
+            <h4>Mapa de potencial exploratorio</h4>
+            <div className={styles.mapWrap}>
+              <MapContainer
+                center={DEFAULT_VIEW}
+                zoom={DEFAULT_ZOOM}
+                scrollWheelZoom
+                preferCanvas
+                style={{ height: "100%", width: "100%" }}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <ZoneAutoZoom
+                  points={potentialMapPoints}
+                  center={null}
+                  radiusKm={0}
+                  countryIso={potentialCountryIso}
+                  trigger={potentialAutoZoomTrigger}
+                />
+                {potentialHullFeatures.map((item, index) => (
+                  <GeoJSON
+                    key={`pot-hull-${item.clusterId}-${index}`}
+                    data={item.feature}
+                    style={() => ({
+                      color: "#7c3aed",
+                      weight: 2.2,
+                      fillColor: "#7c3aed",
+                      fillOpacity: 0.08,
+                    })}
+                  />
+                ))}
+                {potentialVisibleHeatPoints.map((point, index) => {
+                  const markerStyle = markerStyleForWeight(Number(point.weight || 0));
+                  return (
+                    <CircleMarker
+                      key={`pot-point-${index}-${point.dep_name}`}
+                      center={[Number(point.lat), Number(point.lng)]}
+                      radius={markerStyle.radius}
+                      pathOptions={markerStyle}
+                    >
+                      <Tooltip direction="top" offset={[0, -2]}>
+                        <strong>{point.dep_name}</strong>
+                        <br />
+                        Mineral: {point.mineral}
+                        <br />
+                        Zona: {point.region || "N/A"}
+                        <br />
+                        Presencia relativa: {formatNumber((Number(point.weight) || 0) * 100, 0)}%
+                      </Tooltip>
+                    </CircleMarker>
+                  );
+                })}
+              </MapContainer>
+            </div>
+            <p className="muted">
+              El potencial exploratorio mostrado se basa unicamente en registros historicos y distribucion
+              espacial observada.
+            </p>
+          </article>
+
+          <article className={styles.resultsCard}>
+            <h4>Resumen de patron espacial</h4>
+            <div className={styles.kpisGrid}>
+              <div>
+                <strong>Pais</strong>
+                <p>{potentialCountryLabel || "N/A"}</p>
+              </div>
+              <div>
+                <strong>Mineral objetivo</strong>
+                <p>{potentialResult?.mineral || potentialMineral || "N/A"}</p>
+              </div>
+              <div>
+                <strong>Depositos analizados</strong>
+                <p>{formatNumber(potentialResult?.total_deposits || 0)}</p>
+              </div>
+            </div>
+
+            <section className={styles.resultSection}>
+              <h5>Clasificacion espacial</h5>
+              <div className={styles.badgesRow}>
+                <span className={styles.commonBadge}>{potentialResult?.spatial_classification || "N/A"}</span>
+                <span className={styles.commonBadge}>{potentialResult?.spatial_pattern || "N/A"}</span>
+              </div>
+            </section>
+
+            <section className={styles.resultSection}>
+              <h5>Zonas principales detectadas</h5>
+              {(potentialResult?.top_regions || []).length ? (
+                <ul className={styles.simpleList}>
+                  {(potentialResult?.top_regions || []).map((item) => (
+                    <li key={`pot-region-${item.region}`}>
+                      {item.region} ({formatNumber(item.deposit_count)} dep)
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No hay zonas dominantes para esta seleccion.</p>
+              )}
+            </section>
+
+            <section className={styles.resultSection}>
+              <h5>Resumen de concentracion</h5>
+              <p className="muted">
+                {potentialResult?.explanation ||
+                  "Las zonas resaltadas representan concentraciones espaciales de registros mineralogicos asociados al mineral seleccionado."}
+              </p>
+            </section>
+          </article>
+        </div>
       </>
     );
   }
