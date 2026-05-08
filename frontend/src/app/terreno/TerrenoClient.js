@@ -53,6 +53,16 @@ function markerStyleForScore(score) {
   return { color: "#2563eb", fillColor: "#38bdf8", fillOpacity: 0.7, weight: 1, radius: 5 };
 }
 
+function markerStyleForWeight(weight) {
+  if (weight >= 0.8) {
+    return { color: "#b45309", fillColor: "#f97316", fillOpacity: 0.9, weight: 1.4, radius: 8 };
+  }
+  if (weight >= 0.5) {
+    return { color: "#0369a1", fillColor: "#38bdf8", fillOpacity: 0.82, weight: 1.2, radius: 6 };
+  }
+  return { color: "#1d4ed8", fillColor: "#60a5fa", fillOpacity: 0.7, weight: 1, radius: 5 };
+}
+
 function CorridorAutoZoom({ points, focusMode, trigger }) {
   const map = useMap();
   const lastTriggerRef = useRef(0);
@@ -174,6 +184,14 @@ export default function TerrenoClient() {
   const [zoneResult, setZoneResult] = useState(null);
   const [zoneAutoZoomTrigger, setZoneAutoZoomTrigger] = useState(0);
   const zoneSeqRef = useRef(0);
+  const [freqCountryIso, setFreqCountryIso] = useState("");
+  const [freqMineral, setFreqMineral] = useState("");
+  const [freqLimit, setFreqLimit] = useState(20);
+  const [freqShowAll, setFreqShowAll] = useState(false);
+  const [freqLoading, setFreqLoading] = useState(false);
+  const [freqError, setFreqError] = useState("");
+  const [freqResult, setFreqResult] = useState(null);
+  const [freqAutoZoomTrigger, setFreqAutoZoomTrigger] = useState(0);
 
   const toolTabs = useMemo(
     () => [
@@ -203,6 +221,10 @@ export default function TerrenoClient() {
     const match = countries.find((country) => country.iso3 === zoneCountryIso);
     return match?.country_name || "";
   }, [countries, zoneCountryIso]);
+  const freqCountryLabel = useMemo(() => {
+    const match = countries.find((country) => country.iso3 === freqCountryIso);
+    return match?.country_name || "";
+  }, [countries, freqCountryIso]);
 
   useEffect(() => {
     setCountryDeposits([]);
@@ -307,6 +329,13 @@ export default function TerrenoClient() {
 
     return () => controller.abort();
   }, [zoneCountryIso]);
+
+  useEffect(() => {
+    setFreqMineral("");
+    setFreqResult(null);
+    setFreqError("");
+    setFreqAutoZoomTrigger((value) => value + 1);
+  }, [freqCountryIso]);
 
   const depositsById = useMemo(() => {
     const map = new Map();
@@ -473,6 +502,51 @@ export default function TerrenoClient() {
     () => zoneCountryDeposits.map((item) => [item.latitude, item.longitude]),
     [zoneCountryDeposits],
   );
+  const freqMapPoints = useMemo(() => {
+    if (freqResult?.heat_points?.length) {
+      return freqResult.heat_points
+        .map((point) => [Number(point.lat), Number(point.lng)])
+        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+    }
+    return [];
+  }, [freqResult]);
+
+  useEffect(() => {
+    if (activeTool !== "minerals") return;
+    if (!freqCountryIso) return;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(async () => {
+      setFreqLoading(true);
+      setFreqError("");
+      try {
+        const qs = new URLSearchParams({
+          country_iso3: freqCountryIso,
+          limit: String(freqLimit),
+          show_all: String(freqShowAll),
+        });
+        if (freqMineral.trim()) qs.set("mineral", freqMineral.trim());
+        const response = await fetch(`/api/backend/api/v1/terrain/frequent-minerals?${qs.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`);
+        setFreqResult(payload);
+        setFreqAutoZoomTrigger((value) => value + 1);
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        setFreqResult(null);
+        setFreqError(error?.message || "No fue posible cargar minerales frecuentes.");
+      } finally {
+        setFreqLoading(false);
+      }
+    }, 280);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [activeTool, freqCountryIso, freqMineral, freqLimit, freqShowAll]);
 
   function clearZone() {
     zoneSeqRef.current += 1;
@@ -1055,17 +1129,190 @@ export default function TerrenoClient() {
     if (activeTool === "minerals") {
       return (
         <>
-          <h3>Minerales frecuentes</h3>
           <p className="muted">
-            Esta subseccion mostrara los minerales mas frecuentes en la zona seleccionada, usando los
-            registros existentes en la base de datos.
+            Explora la distribucion mineralogica por pais para identificar minerales dominantes,
+            coexistencias frecuentes y concentracion espacial observada.
           </p>
-          <div className={styles.placeholderList}>
-            <p>1. Placeholder mineral A - n ocurrencias</p>
-            <p>2. Placeholder mineral B - n ocurrencias</p>
-            <p>3. Placeholder mineral C - n ocurrencias</p>
+          <div className={styles.controls}>
+            <label>
+              Pais
+              <select value={freqCountryIso} onChange={(event) => setFreqCountryIso(event.target.value)}>
+                <option value="">Seleccionar pais</option>
+                {countries.map((country) => (
+                  <option key={`freq-${country.country_name}-${country.iso3}`} value={country.iso3 || ""}>
+                    {country.country_name} ({country.iso3 || "N/A"})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Mineral (opcional)
+              <select value={freqMineral} onChange={(event) => setFreqMineral(event.target.value)}>
+                <option value="">Todos los minerales</option>
+                {(freqResult?.available_minerals || []).map((item) => (
+                  <option key={`min-opt-${item.mineral}`} value={item.mineral}>
+                    {item.mineral}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Top N
+              <select value={freqLimit} onChange={(event) => setFreqLimit(Number(event.target.value) || 20)}>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </label>
+            <label className={styles.toggleLabel}>
+              <span>Mostrar todos los minerales</span>
+              <input
+                type="checkbox"
+                checked={freqShowAll}
+                onChange={(event) => setFreqShowAll(event.target.checked)}
+              />
+            </label>
           </div>
-          <div className={styles.placeholderArea}>Espacio reservado para grafico o tabla de ranking.</div>
+
+          {!freqCountryIso && (
+            <p className="muted">Selecciona un pais para explorar minerales frecuentes.</p>
+          )}
+          {freqError && <div className={styles.messageBox}>{freqError}</div>}
+          {freqCountryIso && freqLoading && (
+            <p className="muted">Analizando distribucion mineralogica...</p>
+          )}
+          {freqCountryIso && !freqLoading && !freqResult?.minerals?.length && !freqError && (
+            <p className="muted">No se encontraron minerales asociados para esta seleccion.</p>
+          )}
+
+          <div className={styles.corridorLayout}>
+            <article className={styles.mapCard}>
+              <h4>Mapa de intensidad mineralogica</h4>
+              <div className={styles.mapWrap}>
+                <MapContainer
+                  center={DEFAULT_VIEW}
+                  zoom={DEFAULT_ZOOM}
+                  scrollWheelZoom
+                  preferCanvas
+                  style={{ height: "100%", width: "100%" }}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <ZoneAutoZoom
+                    points={freqMapPoints}
+                    center={null}
+                    radiusKm={0}
+                    countryIso={freqCountryIso}
+                    trigger={freqAutoZoomTrigger}
+                  />
+                  {(freqResult?.heat_points || []).map((point, index) => {
+                    const markerStyle = markerStyleForWeight(Number(point.weight || 0));
+                    return (
+                      <CircleMarker
+                        key={`freq-point-${index}-${point.dep_name}`}
+                        center={[Number(point.lat), Number(point.lng)]}
+                        radius={markerStyle.radius}
+                        pathOptions={markerStyle}
+                      >
+                        <Tooltip direction="top" offset={[0, -2]}>
+                          <strong>{point.dep_name}</strong>
+                          <br />
+                          Mineral dominante: {point.mineral || "N/A"}
+                          <br />
+                          Intensidad: {formatNumber((Number(point.weight) || 0) * 100, 0)}%
+                        </Tooltip>
+                      </CircleMarker>
+                    );
+                  })}
+                </MapContainer>
+              </div>
+              <p className="muted">
+                Los resultados se basan en registros mineralogicos existentes y distribucion espacial
+                observada.
+              </p>
+            </article>
+
+            <article className={styles.resultsCard}>
+              <h4>Resumen mineralogico</h4>
+              <div className={styles.kpisGrid}>
+                <div>
+                  <strong>Pais</strong>
+                  <p>{freqCountryLabel || "N/A"}</p>
+                </div>
+                <div>
+                  <strong>Depositos analizados</strong>
+                  <p>{formatNumber(freqResult?.total_deposits || 0)}</p>
+                </div>
+                <div>
+                  <strong>Mineral foco</strong>
+                  <p>{freqResult?.coexistence_focus_mineral || "N/A"}</p>
+                </div>
+              </div>
+
+              <section className={styles.resultSection}>
+                <h5>Ranking de minerales</h5>
+                <p className="muted">
+                  La intensidad representa la frecuencia relativa del mineral dentro de los depositos
+                  registrados del pais seleccionado.
+                </p>
+                {(freqResult?.minerals || []).length ? (
+                  <ul className={styles.rankingBars}>
+                    {(freqResult?.minerals || []).map((item) => (
+                      <li key={`freq-rank-${item.mineral}`}>
+                        <div className={styles.rankingBarsHead}>
+                          <span>{item.mineral}</span>
+                          <span>{formatNumber(item.percentage, 1)}%</span>
+                        </div>
+                        <div className={styles.mineralBarTrack}>
+                          <div className={styles.mineralBarFill} style={{ width: `${Math.min(100, item.percentage)}%` }} />
+                        </div>
+                        <span className={styles[`intensity-${item.intensity}`]}>{item.intensity}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No hay minerales para mostrar en el ranking.</p>
+                )}
+              </section>
+
+              <section className={styles.resultSection}>
+                <h5>Coexistencia mineralogica</h5>
+                <p className="muted">
+                  {freqResult?.coexistence_focus_mineral
+                    ? `${freqResult.coexistence_focus_mineral} suele aparecer junto con:`
+                    : "Selecciona un mineral para profundizar coexistencia."}
+                </p>
+                {(freqResult?.coexistence || []).length ? (
+                  <ul className={styles.simpleList}>
+                    {freqResult.coexistence.map((item) => (
+                      <li key={`coexist-${item.mineral}`}>
+                        {item.mineral} ({formatNumber(item.count)})
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No se detecto coexistencia relevante para esta seleccion.</p>
+                )}
+              </section>
+
+              <section className={styles.resultSection}>
+                <h5>Zonas dominantes</h5>
+                {(freqResult?.top_regions || []).length ? (
+                  <ul className={styles.simpleList}>
+                    {(freqResult?.top_regions || []).map((region) => (
+                      <li key={`region-${region.region}`}>
+                        {region.region} - {region.dominant_mineral} ({formatNumber(region.deposit_count)} dep)
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No se encontraron regiones dominantes para esta seleccion.</p>
+                )}
+              </section>
+            </article>
+          </div>
         </>
       );
     }

@@ -876,3 +876,251 @@ def api_terrain_zone_interest(
     if deposit_count == 0:
         response["message"] = "No se encontraron depositos registrados dentro del radio seleccionado."
     return response
+
+
+@app.get("/api/v1/terrain/frequent-minerals")
+def api_terrain_frequent_minerals(
+    country_iso3: str = Query(...),
+    mineral: str | None = Query(default=None),
+    limit: int = Query(default=20),
+    show_all: bool = Query(default=False),
+) -> dict:
+    """Return mineral frequency and spatial concentration for a selected country."""
+    iso3 = (country_iso3 or "").strip().upper()
+    if len(iso3) != 3:
+        raise HTTPException(status_code=400, detail="country_iso3 must be a valid ISO3 code.")
+    if limit not in {10, 20, 50}:
+        raise HTTPException(status_code=400, detail="limit must be one of: 10, 20, 50.")
+    selected_mineral = (mineral or "").strip()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.country_name
+                FROM dim_country c
+                WHERE c.iso3 = %s
+                ORDER BY LENGTH(c.country_name) DESC, c.country_name
+                LIMIT 1
+                """,
+                (iso3,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"Country with ISO3 '{iso3}' was not found.")
+            country_name = row[0]
+
+            cur.execute(
+                """
+                SELECT d.dep_id,
+                       COALESCE(d.name, CONCAT('Dep. ', d.dep_id::text)) AS name,
+                       d.latitude AS lat,
+                       d.longitude AS lng,
+                       COALESCE(NULLIF(TRIM(l.region), ''), NULLIF(TRIM(l.state_prov), ''), 'Sin region') AS region
+                FROM mrds_deposit d
+                JOIN mrds_location l ON l.dep_id = d.dep_id
+                JOIN dim_country c ON c.country_id = l.country_id
+                WHERE c.iso3 = %s
+                  AND d.latitude IS NOT NULL
+                  AND d.longitude IS NOT NULL
+                  AND (
+                    %s = '' OR EXISTS (
+                      SELECT 1
+                      FROM mrds_commodity x
+                      WHERE x.dep_id = d.dep_id
+                        AND x.commod IS NOT NULL
+                        AND TRIM(x.commod) <> ''
+                        AND LOWER(TRIM(x.commod)) = LOWER(%s)
+                    )
+                  )
+                ORDER BY d.dep_id
+                """,
+                (iso3, selected_mineral, selected_mineral),
+            )
+            deposit_rows = cur.fetchall()
+
+            if not deposit_rows:
+                return {
+                    "country": {"iso3": iso3, "name": country_name},
+                    "selected_mineral": selected_mineral or None,
+                    "total_deposits": 0,
+                    "minerals": [],
+                    "top_regions": [],
+                    "heat_points": [],
+                    "coexistence_focus_mineral": selected_mineral or None,
+                    "coexistence": [],
+                    "available_minerals": [],
+                    "points_geojson": {},
+                    "message": "No se encontraron minerales asociados para esta seleccion.",
+                }
+
+            dep_ids = [int(row[0]) for row in deposit_rows]
+            dep_ids_set = set(dep_ids)
+
+            cur.execute(
+                """
+                SELECT DISTINCT mc.dep_id, TRIM(mc.commod) AS mineral
+                FROM mrds_commodity mc
+                WHERE mc.dep_id = ANY(%s::bigint[])
+                  AND mc.commod IS NOT NULL
+                  AND TRIM(mc.commod) <> ''
+                """,
+                (dep_ids,),
+            )
+            dep_mineral_rows = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT ST_AsGeoJSON(ST_Collect(ST_SetSRID(ST_MakePoint(d.longitude, d.latitude), 4326))) AS points_geojson
+                FROM mrds_deposit d
+                WHERE d.dep_id = ANY(%s::bigint[])
+                  AND d.latitude IS NOT NULL
+                  AND d.longitude IS NOT NULL
+                """,
+                (dep_ids,),
+            )
+            geo_row = cur.fetchone()
+            points_geojson = _safe_geojson(geo_row[0] if geo_row else None)
+
+    total_deposits = len(dep_ids)
+    minerals_by_deposit: dict[int, set[str]] = {dep_id: set() for dep_id in dep_ids}
+    mineral_to_deposits: dict[str, set[int]] = {}
+
+    for dep_id, mineral_name in dep_mineral_rows:
+        dep_id_int = int(dep_id)
+        if dep_id_int not in dep_ids_set:
+            continue
+        mineral_clean = str(mineral_name or "").strip()
+        if not mineral_clean:
+            continue
+        minerals_by_deposit[dep_id_int].add(mineral_clean)
+        mineral_to_deposits.setdefault(mineral_clean, set()).add(dep_id_int)
+
+    available_sorted = sorted(
+        (
+            {
+                "mineral": mineral_name,
+                "deposit_count": len(deposit_set),
+            }
+            for mineral_name, deposit_set in mineral_to_deposits.items()
+        ),
+        key=lambda item: (-item["deposit_count"], item["mineral"]),
+    )
+
+    minerals_rank = available_sorted if show_all else available_sorted[:limit]
+
+    mineral_frequency: dict[str, float] = {}
+    minerals_payload: list[dict] = []
+    for item in minerals_rank:
+        mineral_name = item["mineral"]
+        count = int(item["deposit_count"])
+        percentage = round((count * 100.0) / total_deposits, 2) if total_deposits else 0.0
+        mineral_frequency[mineral_name] = percentage
+        if percentage >= 50:
+            intensity = "high"
+        elif percentage >= 20:
+            intensity = "medium"
+        else:
+            intensity = "low"
+
+        co_counts: dict[str, int] = {}
+        for dep_id in mineral_to_deposits.get(mineral_name, set()):
+            for other in minerals_by_deposit.get(dep_id, set()):
+                if other == mineral_name:
+                    continue
+                co_counts[other] = co_counts.get(other, 0) + 1
+        common_with = [
+            name
+            for name, _ in sorted(co_counts.items(), key=lambda value: (-value[1], value[0]))[:3]
+        ]
+
+        minerals_payload.append(
+            {
+                "mineral": mineral_name,
+                "deposit_count": count,
+                "percentage": percentage,
+                "intensity": intensity,
+                "common_with": common_with,
+            }
+        )
+
+    focus_mineral = selected_mineral or (minerals_payload[0]["mineral"] if minerals_payload else None)
+    coexistence_counts: dict[str, int] = {}
+    if focus_mineral and focus_mineral in mineral_to_deposits:
+        for dep_id in mineral_to_deposits.get(focus_mineral, set()):
+            for other in minerals_by_deposit.get(dep_id, set()):
+                if other == focus_mineral:
+                    continue
+                coexistence_counts[other] = coexistence_counts.get(other, 0) + 1
+    coexistence = [
+        {"mineral": name, "count": count}
+        for name, count in sorted(coexistence_counts.items(), key=lambda value: (-value[1], value[0]))[:10]
+    ]
+
+    region_groups: dict[str, list[int]] = {}
+    for dep_id, _name, _lat, _lng, region in deposit_rows:
+        region_groups.setdefault(region, []).append(int(dep_id))
+
+    top_regions: list[dict] = []
+    for region, region_dep_ids in region_groups.items():
+        regional_count: dict[str, int] = {}
+        for dep_id in region_dep_ids:
+            for mineral_name in minerals_by_deposit.get(dep_id, set()):
+                regional_count[mineral_name] = regional_count.get(mineral_name, 0) + 1
+        dominant = (
+            sorted(regional_count.items(), key=lambda value: (-value[1], value[0]))[0][0]
+            if regional_count
+            else "N/A"
+        )
+        top_regions.append(
+            {
+                "region": region,
+                "dominant_mineral": dominant,
+                "deposit_count": len(region_dep_ids),
+            }
+        )
+    top_regions.sort(key=lambda item: (-item["deposit_count"], item["region"]))
+    top_regions = top_regions[:10]
+
+    max_minerals_per_deposit = max((len(values) for values in minerals_by_deposit.values()), default=1)
+    heat_points: list[dict] = []
+    for dep_id, name, dep_lat, dep_lng, _region in deposit_rows:
+        dep_id_int = int(dep_id)
+        deposit_minerals = minerals_by_deposit.get(dep_id_int, set())
+        if focus_mineral and focus_mineral in deposit_minerals:
+            weight = 1.0
+        else:
+            weight = len(deposit_minerals) / max_minerals_per_deposit if max_minerals_per_deposit else 0.0
+        if focus_mineral and focus_mineral in deposit_minerals:
+            marker_mineral = focus_mineral
+        else:
+            marker_mineral = (
+                sorted(
+                    deposit_minerals,
+                    key=lambda value: (-len(mineral_to_deposits.get(value, set())), value),
+                )[0]
+                if deposit_minerals
+                else "N/A"
+            )
+        heat_points.append(
+            {
+                "dep_name": name,
+                "lat": float(dep_lat),
+                "lng": float(dep_lng),
+                "weight": round(float(weight), 3),
+                "mineral": marker_mineral,
+            }
+        )
+
+    return {
+        "country": {"iso3": iso3, "name": country_name},
+        "selected_mineral": selected_mineral or None,
+        "total_deposits": total_deposits,
+        "minerals": minerals_payload,
+        "top_regions": top_regions,
+        "heat_points": heat_points,
+        "coexistence_focus_mineral": focus_mineral,
+        "coexistence": coexistence,
+        "available_minerals": available_sorted,
+        "points_geojson": points_geojson,
+    }
