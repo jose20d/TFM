@@ -1902,3 +1902,67 @@ def api_queries_country_profile(
         ),
         "rows": results,
     }
+
+
+@app.get("/api/v1/queries/country-profile/bounds")
+def api_queries_country_profile_bounds() -> dict:
+    """Return observed min/max bounds for guided country profile filters."""
+    sql = """
+        WITH country_bucket AS (
+            SELECT DISTINCT ON (c.iso3)
+                   c.iso3
+            FROM dim_country c
+            WHERE c.iso3 IS NOT NULL
+              AND TRIM(c.iso3) <> ''
+            ORDER BY c.iso3
+        ),
+        deposits AS (
+            SELECT c.iso3, COUNT(*)::int AS total_deposits
+            FROM mrds_location ml
+            JOIN dim_country c ON c.country_id = ml.country_id
+            WHERE c.iso3 IS NOT NULL
+              AND TRIM(c.iso3) <> ''
+            GROUP BY c.iso3
+        ),
+        latest AS (
+            SELECT DISTINCT ON (c.iso3, ci.indicator_code)
+                   c.iso3,
+                   ci.indicator_code,
+                   ci.value
+            FROM country_indicator ci
+            JOIN dim_country c ON c.country_id = ci.country_id
+            WHERE ci.indicator_code IN ('NY.GDP.MKTP.CD', 'CPI', 'RANK')
+            ORDER BY c.iso3, ci.indicator_code, ci.year DESC
+        ),
+        overview AS (
+            SELECT
+                cb.iso3,
+                COALESCE(d.total_deposits, 0) AS total_deposits,
+                (SELECT value FROM latest WHERE iso3 = cb.iso3 AND indicator_code = 'NY.GDP.MKTP.CD') AS gdp,
+                (SELECT value FROM latest WHERE iso3 = cb.iso3 AND indicator_code = 'CPI') AS cpi,
+                (SELECT value FROM latest WHERE iso3 = cb.iso3 AND indicator_code = 'RANK') AS fsi
+            FROM country_bucket cb
+            LEFT JOIN deposits d ON d.iso3 = cb.iso3
+        )
+        SELECT
+            MIN(total_deposits)::int AS deposits_min,
+            MAX(total_deposits)::int AS deposits_max,
+            MIN(gdp) AS gdp_min,
+            MAX(gdp) AS gdp_max,
+            MIN(cpi) AS cpi_min,
+            MAX(cpi) AS cpi_max,
+            MIN(fsi) AS fsi_min,
+            MAX(fsi) AS fsi_max
+        FROM overview
+    """
+    row = _fetch_one(sql)
+    return {
+        "deposits_min": int(row.get("deposits_min") or 0),
+        "deposits_max": int(row.get("deposits_max") or 0),
+        "gdp_min": float(row["gdp_min"]) if row.get("gdp_min") is not None else None,
+        "gdp_max": float(row["gdp_max"]) if row.get("gdp_max") is not None else None,
+        "cpi_min": float(row["cpi_min"]) if row.get("cpi_min") is not None else None,
+        "cpi_max": float(row["cpi_max"]) if row.get("cpi_max") is not None else None,
+        "fsi_min": float(row["fsi_min"]) if row.get("fsi_min") is not None else None,
+        "fsi_max": float(row["fsi_max"]) if row.get("fsi_max") is not None else None,
+    }

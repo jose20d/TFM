@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
+import dynamic from "next/dynamic";
 import "leaflet/dist/leaflet.css";
-import L from "leaflet";
 import styles from "./consultas.module.css";
 
 const MODES = [
@@ -14,8 +13,7 @@ const MODES = [
   { id: "profile", label: "Perfil de pais" },
 ];
 
-const DEFAULT_CENTER = [15, -20];
-const DEFAULT_ZOOM = 2;
+const SpatialResultsMap = dynamic(() => import("./SpatialResultsMap"), { ssr: false });
 
 function InfoHint({ text, label }) {
   return (
@@ -39,6 +37,23 @@ function formatNumber(value, decimals = 0) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(num);
+}
+
+function formatUsdBillions(value, decimals = 2) {
+  if (value === null || value === undefined) return "N/A";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "N/A";
+  return `${formatNumber(num / 1_000_000_000, decimals)} USD B`;
+}
+
+function hasText(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function toNumberOrNull(value) {
+  if (!hasText(value)) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
 }
 
 function toCsv(rows) {
@@ -68,28 +83,6 @@ function downloadText(filename, content, mimeType) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-function SpatialAutoZoom({ rows }) {
-  const map = useMap();
-
-  useEffect(() => {
-    const points = (rows || [])
-      .map((row) => [Number(row.lat), Number(row.lng)])
-      .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
-
-    if (!points.length) {
-      map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: true });
-      return;
-    }
-    if (points.length === 1) {
-      map.setView(points[0], 7, { animate: true });
-      return;
-    }
-    map.fitBounds(L.latLngBounds(points), { padding: [24, 24], maxZoom: 8, animate: true });
-  }, [map, rows]);
-
-  return null;
 }
 
 export default function ConsultasClient() {
@@ -133,11 +126,18 @@ export default function ConsultasClient() {
   });
   const [spatialCountryDeposits, setSpatialCountryDeposits] = useState([]);
   const [spatialMinerals, setSpatialMinerals] = useState([]);
+  const [profileBounds, setProfileBounds] = useState(null);
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/backend/api/v1/countries?limit=300", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/backend/api/v1/top-minerals?limit=120", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/backend/api/v1/countries?limit=300", { cache: "no-store" }).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      }),
+      fetch("/api/backend/api/v1/top-minerals?limit=25", { cache: "no-store" }).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      }),
     ])
       .then(([countriesPayload, mineralsPayload]) => {
         setCountries(Array.isArray(countriesPayload) ? countriesPayload : []);
@@ -150,6 +150,16 @@ export default function ConsultasClient() {
         setCountries([]);
         setMinerals([]);
       });
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/backend/api/v1/queries/country-profile/bounds", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => setProfileBounds(payload || null))
+      .catch(() => setProfileBounds(null));
   }, []);
 
   useEffect(() => {
@@ -250,22 +260,57 @@ export default function ConsultasClient() {
         });
         url = `/api/backend/api/v1/queries/spatial-nearby?${qs.toString()}`;
       } else {
+        const gdpMinInput = toNumberOrNull(profileFilters.gdpMin);
+        const gdpMaxInput = toNumberOrNull(profileFilters.gdpMax);
+        const cpiMinInput = toNumberOrNull(profileFilters.cpiMin);
+        const cpiMaxInput = toNumberOrNull(profileFilters.cpiMax);
+        const fsiMinInput = toNumberOrNull(profileFilters.fsiMin);
+        const fsiMaxInput = toNumberOrNull(profileFilters.fsiMax);
+
+        const gdpMinRaw =
+          gdpMinInput !== null ? gdpMinInput * 1_000_000_000 : toNumberOrNull(profileBounds?.gdp_min);
+        const gdpMaxRaw =
+          gdpMaxInput !== null ? gdpMaxInput * 1_000_000_000 : toNumberOrNull(profileBounds?.gdp_max);
+        const cpiMinValue = cpiMinInput !== null ? cpiMinInput : toNumberOrNull(profileBounds?.cpi_min);
+        const cpiMaxValue = cpiMaxInput !== null ? cpiMaxInput : toNumberOrNull(profileBounds?.cpi_max);
+        const fsiMinValue = fsiMinInput !== null ? fsiMinInput : toNumberOrNull(profileBounds?.fsi_min);
+        const fsiMaxValue = fsiMaxInput !== null ? fsiMaxInput : toNumberOrNull(profileBounds?.fsi_max);
+
         const qs = new URLSearchParams({
           min_deposits: String(profileFilters.minDeposits),
-          gdp_min: profileFilters.gdpMin,
-          gdp_max: profileFilters.gdpMax,
-          cpi_min: profileFilters.cpiMin,
-          cpi_max: profileFilters.cpiMax,
-          fsi_min: profileFilters.fsiMin,
-          fsi_max: profileFilters.fsiMax,
           limit: String(profileFilters.limit),
         });
+        if (gdpMinRaw !== null) qs.set("gdp_min", String(gdpMinRaw));
+        if (gdpMaxRaw !== null) qs.set("gdp_max", String(gdpMaxRaw));
+        if (cpiMinValue !== null) qs.set("cpi_min", String(cpiMinValue));
+        if (cpiMaxValue !== null) qs.set("cpi_max", String(cpiMaxValue));
+        if (fsiMinValue !== null) qs.set("fsi_min", String(fsiMinValue));
+        if (fsiMaxValue !== null) qs.set("fsi_max", String(fsiMaxValue));
         url = `/api/backend/api/v1/queries/country-profile?${qs.toString()}`;
       }
 
       const response = await fetch(url, { cache: "no-store" });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`);
+      if (!response.ok) {
+        const detail = payload?.detail;
+        const detailText = Array.isArray(detail)
+          ? detail
+              .map((item) => {
+                if (typeof item === "string") return item;
+                if (item && typeof item === "object") {
+                  const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
+                  const msg = item.msg || "";
+                  return [loc, msg].filter(Boolean).join(": ");
+                }
+                return String(item ?? "");
+              })
+              .filter(Boolean)
+              .join(" | ")
+          : typeof detail === "string"
+            ? detail
+            : "";
+        throw new Error(detailText || `HTTP ${response.status}`);
+      }
       setResult(payload || { result_count: 0, summary: "", rows: [] });
     } catch (queryError) {
       setResult({ result_count: 0, summary: "", rows: [] });
@@ -333,12 +378,17 @@ export default function ConsultasClient() {
           </label>
           <label className={styles.fieldMineral}>
             Mineral
-            <input
-              list="consultas-minerals"
+            <select
               value={depositFilters.mineral}
               onChange={(e) => setDepositFilters((p) => ({ ...p, mineral: e.target.value }))}
-              placeholder="Ejemplo: Gold"
-            />
+            >
+              <option value="">Todos</option>
+              {minerals.map((mineral) => (
+                <option key={`dep-min-${mineral}`} value={mineral}>
+                  {mineral}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.fieldStatus}>
             Estado del deposito
@@ -400,27 +450,45 @@ export default function ConsultasClient() {
           </label>
           <label className={styles.fieldCombinedA}>
             Mineral A
-            <input
-              list="consultas-minerals"
+            <select
               value={combinedFilters.mineralA}
               onChange={(e) => setCombinedFilters((p) => ({ ...p, mineralA: e.target.value }))}
-            />
+            >
+              <option value="">Seleccionar</option>
+              {minerals.map((mineral) => (
+                <option key={`comb-a-${mineral}`} value={mineral}>
+                  {mineral}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.fieldCombinedB}>
             Mineral B
-            <input
-              list="consultas-minerals"
+            <select
               value={combinedFilters.mineralB}
               onChange={(e) => setCombinedFilters((p) => ({ ...p, mineralB: e.target.value }))}
-            />
+            >
+              <option value="">Seleccionar</option>
+              {minerals.map((mineral) => (
+                <option key={`comb-b-${mineral}`} value={mineral}>
+                  {mineral}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.fieldCombinedExclude}>
             Excluir mineral (opcional)
-            <input
-              list="consultas-minerals"
+            <select
               value={combinedFilters.excludeMineral}
               onChange={(e) => setCombinedFilters((p) => ({ ...p, excludeMineral: e.target.value }))}
-            />
+            >
+              <option value="">Todos</option>
+              {minerals.map((mineral) => (
+                <option key={`comb-ex-${mineral}`} value={mineral}>
+                  {mineral}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.fieldCombinedLimit}>
             Limite
@@ -522,60 +590,98 @@ export default function ConsultasClient() {
             type="number"
             min={0}
             value={profileFilters.minDeposits}
+            placeholder={profileBounds?.deposits_min !== undefined ? String(profileBounds.deposits_min) : ""}
             onChange={(e) =>
               setProfileFilters((p) => ({ ...p, minDeposits: Math.max(0, Number(e.target.value) || 0) }))
             }
           />
+          {profileBounds && (
+            <span className={styles.inputHint}>
+              Sugerido: {formatNumber(profileBounds.deposits_min)} - {formatNumber(profileBounds.deposits_max)}
+            </span>
+          )}
         </label>
         <label>
-          PIB minimo
+          PIB minimo (USD B)
           <input
             type="number"
+            step="any"
             value={profileFilters.gdpMin}
+            placeholder={
+              profileBounds?.gdp_min !== null && profileBounds?.gdp_min !== undefined
+                ? String((Number(profileBounds.gdp_min) / 1_000_000_000).toFixed(2))
+                : ""
+            }
             onChange={(e) => setProfileFilters((p) => ({ ...p, gdpMin: e.target.value }))}
           />
+          {profileBounds && (
+            <span className={styles.inputHint}>Min registrado: {formatUsdBillions(profileBounds.gdp_min || 0)}</span>
+          )}
         </label>
         <label>
-          PIB maximo
+          PIB maximo (USD B)
           <input
             type="number"
+            step="any"
             value={profileFilters.gdpMax}
+            placeholder={
+              profileBounds?.gdp_max !== null && profileBounds?.gdp_max !== undefined
+                ? String((Number(profileBounds.gdp_max) / 1_000_000_000).toFixed(2))
+                : ""
+            }
             onChange={(e) => setProfileFilters((p) => ({ ...p, gdpMax: e.target.value }))}
           />
+          {profileBounds && (
+            <span className={styles.inputHint}>Max registrado: {formatUsdBillions(profileBounds.gdp_max || 0)}</span>
+          )}
         </label>
         <label>
-          CPI minimo{" "}
-          <InfoHint text="Valores altos indican menor corrupcion percibida." />
+          CPI minimo
           <input
             type="number"
             value={profileFilters.cpiMin}
+            placeholder={profileBounds?.cpi_min !== null && profileBounds?.cpi_min !== undefined ? String(Math.trunc(profileBounds.cpi_min)) : ""}
             onChange={(e) => setProfileFilters((p) => ({ ...p, cpiMin: e.target.value }))}
           />
+          {profileBounds && (
+            <span className={styles.inputHint}>Min registrado: {formatNumber(profileBounds.cpi_min || 0, 2)}</span>
+          )}
         </label>
         <label>
           CPI maximo
           <input
             type="number"
             value={profileFilters.cpiMax}
+            placeholder={profileBounds?.cpi_max !== null && profileBounds?.cpi_max !== undefined ? String(Math.trunc(profileBounds.cpi_max)) : ""}
             onChange={(e) => setProfileFilters((p) => ({ ...p, cpiMax: e.target.value }))}
           />
+          {profileBounds && (
+            <span className={styles.inputHint}>Max registrado: {formatNumber(profileBounds.cpi_max || 0, 2)}</span>
+          )}
         </label>
         <label>
-          FSI minimo{" "}
-          <InfoHint text="Valores altos representan mayor fragilidad institucional." />
+          FSI minimo
           <input
             type="number"
             value={profileFilters.fsiMin}
+            placeholder={profileBounds?.fsi_min !== null && profileBounds?.fsi_min !== undefined ? String(Math.trunc(profileBounds.fsi_min)) : ""}
             onChange={(e) => setProfileFilters((p) => ({ ...p, fsiMin: e.target.value }))}
           />
+          {profileBounds && (
+            <span className={styles.inputHint}>Min registrado: {formatNumber(profileBounds.fsi_min || 0, 2)}</span>
+          )}
         </label>
         <label>
           FSI maximo
           <input
             type="number"
             value={profileFilters.fsiMax}
+            placeholder={profileBounds?.fsi_max !== null && profileBounds?.fsi_max !== undefined ? String(Math.trunc(profileBounds.fsi_max)) : ""}
             onChange={(e) => setProfileFilters((p) => ({ ...p, fsiMax: e.target.value }))}
           />
+          {profileBounds && (
+            <span className={styles.inputHint}>Max registrado: {formatNumber(profileBounds.fsi_max || 0, 2)}</span>
+          )}
         </label>
         <label>
           Limite
@@ -760,39 +866,7 @@ export default function ConsultasClient() {
               <div>
                 <p className="muted">Vista espacial compacta</p>
                 <div className={styles.smallMap}>
-                  <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} style={{ height: "100%", width: "100%" }}>
-                    <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    <SpatialAutoZoom rows={spatialMapRows} />
-                    {spatialMapRows.map((row, idx) => {
-                      const lat = Number(row.lat);
-                      const lng = Number(row.lng);
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-                      return (
-                        <CircleMarker
-                          key={`spatial-map-${idx}-${row.deposit}`}
-                          center={[lat, lng]}
-                          radius={5}
-                          pathOptions={{
-                            color: "#2563eb",
-                            fillColor: "#38bdf8",
-                            fillOpacity: 0.78,
-                            weight: 1.1,
-                          }}
-                        >
-                          <Tooltip direction="top" offset={[0, -2]}>
-                            <strong>{row.deposit}</strong>
-                            <br />
-                            Distancia: {formatNumber(row.distance_km, 2)} km
-                            <br />
-                            Minerales: {Array.isArray(row.minerals) ? row.minerals.join(", ") || "N/A" : "N/A"}
-                          </Tooltip>
-                        </CircleMarker>
-                      );
-                    })}
-                  </MapContainer>
+                  <SpatialResultsMap rows={spatialMapRows} />
                 </div>
               </div>
             )}

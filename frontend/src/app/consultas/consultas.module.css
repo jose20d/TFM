@@ -116,10 +116,13 @@
 .fieldStatus {
   justify-self: start;
   width: 94%;
+  transform: translateX(40px);
 }
 
 .fieldMin {
   justify-self: stretch;
+  width: 90%;
+  transform: translateX(30px);
 }
 
 .fieldLimit {
@@ -128,7 +131,9 @@
 
 .fieldCombinedCountry { grid-column: 1; }
 .fieldCombinedA { grid-column: 3; }
+.fieldCombinedA { transform: translateX(-60px); }
 .fieldCombinedB { grid-column: 4; }
+.fieldCombinedB { transform: translateX(-30px); }
 .fieldCombinedExclude { grid-column: 5; }
 
 .fieldCombinedLimit {
@@ -259,6 +264,12 @@
 
 .summaryText {
   margin: 0.2rem 0 0.1rem;
+}
+
+.inputHint {
+  color: rgba(171, 196, 220, 0.82);
+  font-size: 0.75rem;
+  line-height: 1.2;
 }
 
 .tableWrap {
