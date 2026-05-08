@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CircleMarker, MapContainer, TileLayer, Tooltip } from "react-leaflet";
+import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import L from "leaflet";
 import styles from "./consultas.module.css";
 
 const MODES = [
@@ -69,6 +70,28 @@ function downloadText(filename, content, mimeType) {
   URL.revokeObjectURL(url);
 }
 
+function SpatialAutoZoom({ rows }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const points = (rows || [])
+      .map((row) => [Number(row.lat), Number(row.lng)])
+      .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+
+    if (!points.length) {
+      map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: true });
+      return;
+    }
+    if (points.length === 1) {
+      map.setView(points[0], 7, { animate: true });
+      return;
+    }
+    map.fitBounds(L.latLngBounds(points), { padding: [24, 24], maxZoom: 8, animate: true });
+  }, [map, rows]);
+
+  return null;
+}
+
 export default function ConsultasClient() {
   const [activeMode, setActiveMode] = useState("deposits");
   const [countries, setCountries] = useState([]);
@@ -109,6 +132,7 @@ export default function ConsultasClient() {
     limit: 200,
   });
   const [spatialCountryDeposits, setSpatialCountryDeposits] = useState([]);
+  const [spatialMinerals, setSpatialMinerals] = useState([]);
 
   useEffect(() => {
     Promise.all([
@@ -152,6 +176,35 @@ export default function ConsultasClient() {
         setSpatialCountryDeposits(options.filter((d) => Number.isFinite(d.dep_id)));
       })
       .catch(() => setSpatialCountryDeposits([]));
+  }, [spatialFilters.countryIso]);
+
+  useEffect(() => {
+    setSpatialMinerals([]);
+    setSpatialFilters((prev) => ({ ...prev, mineral: "" }));
+    if (!spatialFilters.countryIso) return;
+
+    fetch(
+      `/api/backend/api/v1/terrain/frequent-minerals?country_iso3=${spatialFilters.countryIso}&show_all=true&limit=50`,
+      { cache: "no-store" },
+    )
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => {
+        const options = Array.isArray(payload?.available_minerals)
+          ? payload.available_minerals
+              .map((item) => {
+                if (typeof item === "string") return item;
+                if (item && typeof item === "object") return item.mineral || "";
+                return "";
+              })
+              .map((item) => String(item).trim())
+              .filter(Boolean)
+          : [];
+        setSpatialMinerals(options);
+      })
+      .catch(() => setSpatialMinerals([]));
   }, [spatialFilters.countryIso]);
 
   const spatialMapRows = useMemo(
@@ -387,8 +440,8 @@ export default function ConsultasClient() {
 
     if (activeMode === "spatial") {
       return (
-        <div className={styles.filtersGrid}>
-          <label>
+        <div className={styles.filtersGridSpatial}>
+          <label className={styles.fieldSpatialCountry}>
             Pais
             <select
               value={spatialFilters.countryIso}
@@ -402,7 +455,7 @@ export default function ConsultasClient() {
               ))}
             </select>
           </label>
-          <label>
+          <label className={styles.fieldSpatialBase}>
             Deposito base
             <select
               value={spatialFilters.baseDepId}
@@ -417,7 +470,7 @@ export default function ConsultasClient() {
               ))}
             </select>
           </label>
-          <label>
+          <label className={styles.fieldSpatialRadius}>
             Radio (km)
             <input
               type="range"
@@ -431,15 +484,21 @@ export default function ConsultasClient() {
             />
             <span>{formatNumber(spatialFilters.radiusKm)} km</span>
           </label>
-          <label>
+          <label className={styles.fieldSpatialMineral}>
             Mineral opcional
-            <input
-              list="consultas-minerals"
+            <select
               value={spatialFilters.mineral}
               onChange={(e) => setSpatialFilters((p) => ({ ...p, mineral: e.target.value }))}
-            />
+            >
+              <option value="">Todos</option>
+              {(spatialMinerals.length ? spatialMinerals : minerals).map((mineral) => (
+                <option key={`spatial-min-${mineral}`} value={mineral}>
+                  {mineral}
+                </option>
+              ))}
+            </select>
           </label>
-          <label>
+          <label className={styles.fieldSpatialLimit}>
             Limite
             <input
               type="number"
@@ -706,6 +765,7 @@ export default function ConsultasClient() {
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
+                    <SpatialAutoZoom rows={spatialMapRows} />
                     {spatialMapRows.map((row, idx) => {
                       const lat = Number(row.lat);
                       const lng = Number(row.lng);
