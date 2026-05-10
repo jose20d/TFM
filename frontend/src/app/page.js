@@ -189,7 +189,6 @@ export default async function Home({ searchParams }) {
           <Link href="/analisis">Analisis</Link>
           <Link href="/terreno">Terreno</Link>
           <Link href="/consultas">Consultas</Link>
-          <a href="#">Usuario</a>
         </nav>
       </header>
 
