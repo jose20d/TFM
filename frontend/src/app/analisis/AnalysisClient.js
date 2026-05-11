@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import AppHeader from "../../components/AppHeader";
+import { t, useLang, withLang } from "../../lib/i18n";
 import {
   CartesianGrid,
   Legend,
@@ -58,23 +59,23 @@ function groupByCategory(rows) {
   );
 }
 
-function AnalysisTooltip({ active, payload, mode }) {
+function AnalysisTooltip({ active, payload, mode, lang }) {
   if (!active || !payload?.length) return null;
   const data = payload[0].payload;
   return (
     <div className={styles.tooltip}>
       <p><strong>{data.country_name || "N/A"}</strong> ({data.iso3 || "N/A"})</p>
       {mode === "gdp" ? (
-        <p>PIB: {formatNumber(data.gdpB, 2)} USD B</p>
+        <p>{lang === "en" ? "GDP" : "PIB"}: {formatNumber(data.gdpB, 2)} USD B</p>
       ) : (
         <p>FSI: {formatNumber(data.fsi, 2)}</p>
       )}
-      <p>Depositos: {formatNumber(data.total_deposits)}</p>
+      <p>{lang === "en" ? "Deposits" : "Depositos"}: {formatNumber(data.total_deposits)}</p>
       <p>CPI: {formatNumber(data.cpi, 2)}</p>
       {mode === "gdp" ? (
         <p>FSI: {formatNumber(data.fsi, 2)}</p>
       ) : (
-        <p>PIB: {formatNumber(data.gdpB, 2)} USD B</p>
+        <p>{lang === "en" ? "GDP" : "PIB"}: {formatNumber(data.gdpB, 2)} USD B</p>
       )}
     </div>
   );
@@ -101,6 +102,7 @@ async function getJson(url) {
 }
 
 export default function AnalysisClient() {
+  const lang = useLang();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -111,7 +113,7 @@ export default function AnalysisClient() {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      getJson("/api/backend/api/v1/analysis/country-overview"),
+      getJson(withLang("/api/backend/api/v1/analysis/country-overview", lang)),
       getJson("/api/backend/api/v1/health"),
     ])
       .then(([analysisRows, health]) => {
@@ -122,10 +124,10 @@ export default function AnalysisClient() {
       .catch((err) => {
         setRows([]);
         setDbUp(false);
-        setError(err.message || "No fue posible cargar el analisis.");
+        setError(err.message || (lang === "en" ? "Could not load analysis." : "No fue posible cargar el analisis."));
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [lang]);
 
   const normalizedRows = useMemo(
     () =>
@@ -181,34 +183,17 @@ export default function AnalysisClient() {
 
   return (
     <div className="page-shell">
-      <header className="nav">
-        <div className="brand">
-          <span className="brand-dot" />
-          <div>
-            <strong>GeoContext</strong>
-            <br />
-            <span>Plataforma Analitica</span>
-          </div>
-        </div>
-        <nav className="menu">
-          <Link href="/">Inicio</Link>
-          <Link href="/explorar">Explorar</Link>
-          <Link href="/comparar">Comparar</Link>
-          <Link href="/analisis">Analisis</Link>
-          <Link href="/terreno">Terreno</Link>
-          <Link href="/consultas">Consultas</Link>
-        </nav>
-      </header>
+      <AppHeader />
 
       <main className="container">
         <section className={`panel ${styles.headerPanel}`}>
-          <h2>Analisis global de resultados</h2>
+          <h2>{t(lang, "analysisTitle")}</h2>
           <p className="muted">
-            Vista de patrones globales por pais usando depositos, PIB, CPI y FSI.
+            {t(lang, "analysisHint")}
           </p>
           <div className={styles.filters}>
             <label>
-              Minimo de depositos
+              {lang === "en" ? "Minimum deposits" : "Minimo de depositos"}
               <input
                 type="number"
                 min={0}
@@ -217,16 +202,21 @@ export default function AnalysisClient() {
               />
             </label>
             <label>
-              Categoria CPI
+              {lang === "en" ? "CPI Category" : "Categoria CPI"}
               <select value={cpiFilter} onChange={(event) => setCpiFilter(event.target.value)}>
-                <option value="all">Todas</option>
-                <option value="high">Alta corrupcion percibida (CPI &lt; 30)</option>
-                <option value="mid">Nivel medio (30 - 59)</option>
-                <option value="low">Baja corrupcion percibida (CPI &gt;= 60)</option>
+                <option value="all">{lang === "en" ? "All" : "Todas"}</option>
+                <option value="high">
+                  {lang === "en" ? "High perceived corruption (CPI < 30)" : "Alta corrupcion percibida (CPI < 30)"}
+                </option>
+                <option value="mid">{lang === "en" ? "Medium level (30 - 59)" : "Nivel medio (30 - 59)"}</option>
+                <option value="low">
+                  {lang === "en" ? "Low perceived corruption (CPI >= 60)" : "Baja corrupcion percibida (CPI >= 60)"}
+                </option>
               </select>
             </label>
             <p className="muted">
-              Paises filtrados: <strong>{formatNumber(filteredRows.length)}</strong>
+              {lang === "en" ? "Filtered countries" : "Paises filtrados"}:{" "}
+              <strong>{formatNumber(filteredRows.length)}</strong>
             </p>
           </div>
           {!dbUp && (
@@ -241,12 +231,16 @@ export default function AnalysisClient() {
           <article className="panel">
             <h3>
               <InfoHint
-                label="PIB vs depositos por pais (escala log)"
-                text="La escala logaritmica reduce el impacto de valores extremos para mejorar la visualizacion comparativa."
+                label={lang === "en" ? "GDP vs deposits by country (log scale)" : "PIB vs depositos por pais (escala log)"}
+                text={
+                  lang === "en"
+                    ? "Log scale reduces the impact of outliers for better comparative visualization."
+                    : "La escala logaritmica reduce el impacto de valores extremos para mejorar la visualizacion comparativa."
+                }
               />
             </h3>
             {loading ? (
-              <p className="muted">Cargando datos...</p>
+              <p className="muted">{lang === "en" ? "Loading data..." : "Cargando datos..."}</p>
             ) : (
               <ResponsiveContainer width="100%" height={340}>
                 <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
@@ -269,7 +263,7 @@ export default function AnalysisClient() {
                     stroke="#a8bfd8"
                     tickFormatter={(value) => formatNumber(value)}
                   />
-                  <Tooltip content={<AnalysisTooltip mode="gdp" />} />
+                  <Tooltip content={<AnalysisTooltip mode="gdp" lang={lang} />} />
                   <Legend wrapperStyle={{ color: "#dbe9f8" }} />
                   {CPI_GROUPS.map((group) => (
                     <Scatter
@@ -284,8 +278,12 @@ export default function AnalysisClient() {
             )}
             <p className="muted">
               <InfoHint
-                label="Leyenda CPI"
-                text="Rojo = alta corrupcion percibida; Amarillo = nivel medio; Verde = baja corrupcion percibida."
+                label={lang === "en" ? "CPI Legend" : "Leyenda CPI"}
+                text={
+                  lang === "en"
+                    ? "Red = high perceived corruption; Yellow = medium level; Green = low perceived corruption."
+                    : "Rojo = alta corrupcion percibida; Amarillo = nivel medio; Verde = baja corrupcion percibida."
+                }
               />
             </p>
           </article>
@@ -293,12 +291,16 @@ export default function AnalysisClient() {
           <article className="panel">
             <h3>
               <InfoHint
-                label="FSI vs depositos por pais (escala log)"
-                text="La escala logaritmica reduce el impacto de valores extremos para mejorar la visualizacion comparativa."
+                label={lang === "en" ? "FSI vs deposits by country (log scale)" : "FSI vs depositos por pais (escala log)"}
+                text={
+                  lang === "en"
+                    ? "Log scale reduces the impact of outliers for better comparative visualization."
+                    : "La escala logaritmica reduce el impacto de valores extremos para mejorar la visualizacion comparativa."
+                }
               />
             </h3>
             {loading ? (
-              <p className="muted">Cargando datos...</p>
+              <p className="muted">{lang === "en" ? "Loading data..." : "Cargando datos..."}</p>
             ) : (
               <ResponsiveContainer width="100%" height={340}>
                 <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
@@ -321,7 +323,7 @@ export default function AnalysisClient() {
                     stroke="#a8bfd8"
                     tickFormatter={(value) => formatNumber(value)}
                   />
-                  <Tooltip content={<AnalysisTooltip mode="fsi" />} />
+                  <Tooltip content={<AnalysisTooltip mode="fsi" lang={lang} />} />
                   <Legend wrapperStyle={{ color: "#dbe9f8" }} />
                   {CPI_GROUPS.map((group) => (
                     <Scatter
@@ -336,8 +338,12 @@ export default function AnalysisClient() {
             )}
             <p className="muted">
               <InfoHint
-                label="Leyenda CPI"
-                text="Rojo = alta corrupcion percibida; Amarillo = nivel medio; Verde = baja corrupcion percibida."
+                label={lang === "en" ? "CPI Legend" : "Leyenda CPI"}
+                text={
+                  lang === "en"
+                    ? "Red = high perceived corruption; Yellow = medium level; Green = low perceived corruption."
+                    : "Rojo = alta corrupcion percibida; Amarillo = nivel medio; Verde = baja corrupcion percibida."
+                }
               />
             </p>
           </article>

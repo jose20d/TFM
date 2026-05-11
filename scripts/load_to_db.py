@@ -127,6 +127,145 @@ def _norm_iso3(value: str | None) -> str | None:
     return normalize_iso3(text) if text else None
 
 
+def _norm_term_token(value: str | None) -> str:
+    """Normalize free-text terms for stable i18n dictionary keys."""
+    text = str(value or "").strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def _upsert_i18n_seed(cur, seed_path: Path) -> int:
+    """Load/refresh seed translations into canonical i18n tables."""
+    if not seed_path.exists():
+        return 0
+    df = pd.read_csv(seed_path)
+    if df.empty:
+        return 0
+    required = {"domain", "source_value", "canonical_key", "label_es", "label_en"}
+    if not required.issubset(set(df.columns)):
+        return 0
+
+    payload_catalog = []
+    payload_translation = []
+    for row in df.itertuples(index=False):
+        domain = str(row.domain).strip().lower()
+        source_value = str(row.source_value).strip()
+        source_norm = _norm_term_token(source_value)
+        canonical_key = str(row.canonical_key).strip().lower()
+        label_es = str(row.label_es).strip() or source_value
+        label_en = str(row.label_en).strip() or source_value
+        if not domain or not source_value or not canonical_key:
+            continue
+        payload_catalog.append((domain, source_norm, source_value, canonical_key))
+        payload_translation.append((canonical_key, "es", label_es))
+        payload_translation.append((canonical_key, "en", label_en))
+
+    if payload_catalog:
+        execute_values(
+            cur,
+            """
+            INSERT INTO i18n_term_catalog (domain, source_value_norm, source_value_original, canonical_key)
+            VALUES %s
+            ON CONFLICT (domain, source_value_norm) DO UPDATE
+            SET source_value_original = EXCLUDED.source_value_original,
+                canonical_key = EXCLUDED.canonical_key,
+                updated_at = NOW()
+            """,
+            payload_catalog,
+        )
+    if payload_translation:
+        execute_values(
+            cur,
+            """
+            INSERT INTO i18n_term_translation (canonical_key, lang, label)
+            VALUES %s
+            ON CONFLICT (canonical_key, lang) DO UPDATE
+            SET label = EXCLUDED.label,
+                updated_at = NOW()
+            """,
+            payload_translation,
+        )
+    return len(payload_catalog)
+
+
+def _upsert_i18n_catalog_from_data(cur) -> int:
+    """Materialize source terms seen in datasets into i18n catalog."""
+    inserted = 0
+    sources = [
+        ("country", "dim_country", "country_name"),
+        ("mineral", "mrds_commodity", "commod"),
+        ("deposit_status", "mrds_deposit", "dev_stat"),
+        ("region", "mrds_location", "region"),
+        ("state_province", "mrds_location", "state_prov"),
+        ("ownership_type", "mrds_ownership", "owner_tp"),
+        ("material", "mrds_material", "material"),
+        ("ore_gangue", "mrds_material", "ore_gangue"),
+        ("rock_class", "mrds_rocks", "rock_cls"),
+        ("first_order_rock", "mrds_rocks", "first_ord_nm"),
+        ("second_order_rock", "mrds_rocks", "second_ord_nm"),
+        ("third_order_rock", "mrds_rocks", "third_ord_nm"),
+        ("age_type", "mrds_ages", "age_tp"),
+        ("phys_division", "mrds_physiography", "phys_div"),
+        ("phys_province", "mrds_physiography", "phys_prov"),
+        ("phys_section", "mrds_physiography", "phys_sect"),
+        ("phys_detail", "mrds_physiography", "phys_det"),
+    ]
+
+    for domain, table_name, column_name in sources:
+        cur.execute(
+            f"""
+            WITH src AS (
+                SELECT
+                    LOWER(TRIM({column_name})) AS source_value_norm,
+                    MIN(TRIM({column_name})) AS source_value_original
+                FROM {table_name}
+                WHERE {column_name} IS NOT NULL
+                  AND TRIM({column_name}) <> ''
+                GROUP BY LOWER(TRIM({column_name}))
+            )
+            INSERT INTO i18n_term_catalog (domain, source_value_norm, source_value_original, canonical_key)
+            SELECT %s AS domain,
+                   src.source_value_norm,
+                   src.source_value_original,
+                   %s || '_' ||
+                   REGEXP_REPLACE(src.source_value_norm, '[^a-z0-9]+', '_', 'g') || '_' ||
+                   SUBSTRING(MD5(src.source_value_norm) FROM 1 FOR 10) AS canonical_key
+            FROM src
+            ON CONFLICT (domain, source_value_norm) DO UPDATE
+            SET source_value_original = EXCLUDED.source_value_original,
+                updated_at = NOW()
+            """,
+            (domain, domain),
+        )
+        inserted += cur.rowcount
+
+    return inserted
+
+
+def _refresh_i18n_materialized(cur) -> int:
+    """Build materialized bilingual term table from dictionary + translations."""
+    cur.execute("TRUNCATE TABLE i18n_term_materialized")
+    cur.execute(
+        """
+        INSERT INTO i18n_term_materialized (
+            domain, source_value_norm, source_value_original, canonical_key, label_es, label_en
+        )
+        SELECT c.domain,
+               c.source_value_norm,
+               c.source_value_original,
+               c.canonical_key,
+               COALESCE(es.label, c.source_value_original) AS label_es,
+               COALESCE(en.label, c.source_value_original) AS label_en
+        FROM i18n_term_catalog c
+        LEFT JOIN i18n_term_translation es
+               ON es.canonical_key = c.canonical_key AND es.lang = 'es'
+        LEFT JOIN i18n_term_translation en
+               ON en.canonical_key = c.canonical_key AND en.lang = 'en'
+        """
+    )
+    return cur.rowcount
+
+
 def _load_worldbank_rows(
     raw_path: Path, dataset_id: str, aliases: dict[str, str]
 ) -> list[dict[str, Any]]:
@@ -1052,6 +1191,7 @@ def main() -> int:
     config_path = REPO_ROOT / "configs" / "datasets.json"
     raw_dir = REPO_ROOT / "data" / "raw"
     aliases_path = REPO_ROOT / "references" / "country_aliases.json"
+    i18n_seed_path = REPO_ROOT / "database" / "i18n_terms_seed.csv"
     mrds_extract = raw_dir / "mrds_csv" / "extracted"
 
     if not config_path.exists():
@@ -1489,6 +1629,15 @@ def main() -> int:
                     print(f"[info] mrds_location repaired country/state (reconcile): {repaired_count}")
                 if pre_country or inferred_count or repaired_count:
                     conn.commit()
+
+            seeded_terms = _upsert_i18n_seed(cur, i18n_seed_path)
+            catalog_terms = _upsert_i18n_catalog_from_data(cur)
+            materialized_terms = _refresh_i18n_materialized(cur)
+            conn.commit()
+            print(
+                "[info] i18n dictionary refreshed: "
+                f"seed={seeded_terms}, catalog_updates={catalog_terms}, materialized={materialized_terms}"
+            )
 
         _print_sanity_checks(conn)
 

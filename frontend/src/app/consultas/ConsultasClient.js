@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import "leaflet/dist/leaflet.css";
 import styles from "./consultas.module.css";
+import AppHeader from "../../components/AppHeader";
+import { t, useLang, withLang } from "../../lib/i18n";
 
 const MODES = [
-  { id: "deposits", label: "Depositos por mineral" },
-  { id: "combined", label: "Minerales combinados" },
-  { id: "spatial", label: "Consulta espacial" },
-  { id: "profile", label: "Perfil de pais" },
+  { id: "deposits" },
+  { id: "combined" },
+  { id: "spatial" },
+  { id: "profile" },
 ];
 
 const SpatialResultsMap = dynamic(() => import("./SpatialResultsMap"), { ssr: false });
@@ -86,6 +87,15 @@ function downloadText(filename, content, mimeType) {
 }
 
 export default function ConsultasClient() {
+  const lang = useLang();
+  const tr = (es, en) => (lang === "en" ? en : es);
+  const modeLabel = (modeId) => {
+    if (modeId === "deposits") return tr("Depositos por mineral", "Deposits by mineral");
+    if (modeId === "combined") return tr("Minerales combinados", "Combined minerals");
+    if (modeId === "spatial") return tr("Consulta espacial", "Spatial query");
+    if (modeId === "profile") return tr("Perfil de pais", "Country profile");
+    return modeId;
+  };
   const [activeMode, setActiveMode] = useState("deposits");
   const [countries, setCountries] = useState([]);
   const [minerals, setMinerals] = useState([]);
@@ -130,11 +140,11 @@ export default function ConsultasClient() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/backend/api/v1/countries?limit=300", { cache: "no-store" }).then((r) => {
+      fetch(withLang("/api/backend/api/v1/countries?limit=300", lang), { cache: "no-store" }).then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       }),
-      fetch("/api/backend/api/v1/top-minerals?limit=25", { cache: "no-store" }).then((r) => {
+      fetch(withLang("/api/backend/api/v1/top-minerals?limit=25", lang), { cache: "no-store" }).then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       }),
@@ -150,24 +160,24 @@ export default function ConsultasClient() {
         setCountries([]);
         setMinerals([]);
       });
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
-    fetch("/api/backend/api/v1/queries/country-profile/bounds", { cache: "no-store" })
+    fetch(withLang("/api/backend/api/v1/queries/country-profile/bounds", lang), { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
       })
       .then((payload) => setProfileBounds(payload || null))
       .catch(() => setProfileBounds(null));
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
     setSpatialCountryDeposits([]);
     setSpatialFilters((prev) => ({ ...prev, baseDepId: "" }));
     if (!spatialFilters.countryIso) return;
     fetch(
-      `/api/backend/api/v1/explore/deposits?country_iso3=${spatialFilters.countryIso}&limit=5000`,
+      withLang(`/api/backend/api/v1/explore/deposits?country_iso3=${spatialFilters.countryIso}&limit=5000`, lang),
       { cache: "no-store" },
     )
       .then((response) => {
@@ -186,7 +196,7 @@ export default function ConsultasClient() {
         setSpatialCountryDeposits(options.filter((d) => Number.isFinite(d.dep_id)));
       })
       .catch(() => setSpatialCountryDeposits([]));
-  }, [spatialFilters.countryIso]);
+  }, [spatialFilters.countryIso, lang]);
 
   useEffect(() => {
     setSpatialMinerals([]);
@@ -194,7 +204,7 @@ export default function ConsultasClient() {
     if (!spatialFilters.countryIso) return;
 
     fetch(
-      `/api/backend/api/v1/terrain/frequent-minerals?country_iso3=${spatialFilters.countryIso}&show_all=true&limit=50`,
+      withLang(`/api/backend/api/v1/terrain/frequent-minerals?country_iso3=${spatialFilters.countryIso}&show_all=true&limit=50`, lang),
       { cache: "no-store" },
     )
       .then((response) => {
@@ -215,7 +225,7 @@ export default function ConsultasClient() {
         setSpatialMinerals(options);
       })
       .catch(() => setSpatialMinerals([]));
-  }, [spatialFilters.countryIso]);
+  }, [spatialFilters.countryIso, lang]);
 
   const spatialMapRows = useMemo(
     () => (activeMode === "spatial" ? result.rows || [] : []),
@@ -247,7 +257,7 @@ export default function ConsultasClient() {
         url = `/api/backend/api/v1/queries/combined-minerals?${qs.toString()}`;
       } else if (activeMode === "spatial") {
         if (!spatialFilters.countryIso || !spatialFilters.baseDepId) {
-          setError("Selecciona pais y deposito base para la consulta espacial.");
+          setError(tr("Selecciona pais y deposito base para la consulta espacial.", "Select country and base deposit for spatial query."));
           setLoading(false);
           return;
         }
@@ -289,7 +299,7 @@ export default function ConsultasClient() {
         url = `/api/backend/api/v1/queries/country-profile?${qs.toString()}`;
       }
 
-      const response = await fetch(url, { cache: "no-store" });
+      const response = await fetch(withLang(url, lang), { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) {
         const detail = payload?.detail;
@@ -314,7 +324,7 @@ export default function ConsultasClient() {
       setResult(payload || { result_count: 0, summary: "", rows: [] });
     } catch (queryError) {
       setResult({ result_count: 0, summary: "", rows: [] });
-      setError(queryError?.message || "No fue posible ejecutar la consulta.");
+      setError(queryError?.message || tr("No fue posible ejecutar la consulta.", "Could not run query."));
     } finally {
       setLoading(false);
     }
@@ -363,12 +373,12 @@ export default function ConsultasClient() {
       return (
         <div className={styles.filtersGridDeposits}>
           <label className={styles.fieldCountry}>
-            Pais
+            {tr("Pais", "Country")}
             <select
               value={depositFilters.countryIso}
               onChange={(e) => setDepositFilters((p) => ({ ...p, countryIso: e.target.value }))}
             >
-              <option value="">Todos</option>
+              <option value="">{tr("Todos", "All")}</option>
               {countries.map((country) => (
                 <option key={`dep-${country.iso3}-${country.country_name}`} value={country.iso3 || ""}>
                   {country.country_name} ({country.iso3 || "N/A"})
@@ -377,12 +387,12 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldMineral}>
-            Mineral
+            {tr("Mineral", "Mineral")}
             <select
               value={depositFilters.mineral}
               onChange={(e) => setDepositFilters((p) => ({ ...p, mineral: e.target.value }))}
             >
-              <option value="">Todos</option>
+              <option value="">{tr("Todos", "All")}</option>
               {minerals.map((mineral) => (
                 <option key={`dep-min-${mineral}`} value={mineral}>
                   {mineral}
@@ -391,12 +401,12 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldStatus}>
-            Estado del deposito
+            {tr("Estado del deposito", "Deposit status")}
             <select
               value={depositFilters.status}
               onChange={(e) => setDepositFilters((p) => ({ ...p, status: e.target.value }))}
             >
-              <option value="">Todos</option>
+              <option value="">{tr("Todos", "All")}</option>
               <option value="producer">Producer</option>
               <option value="prospect">Prospect</option>
               <option value="occurrence">Occurrence</option>
@@ -404,7 +414,7 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldMin}>
-            Minimo minerales asociados
+            {tr("Minimo minerales asociados", "Minimum associated minerals")}
             <input
               type="number"
               min={1}
@@ -416,7 +426,7 @@ export default function ConsultasClient() {
             />
           </label>
           <label className={styles.fieldLimit}>
-            Limite de resultados
+            {tr("Result limit", "Result limit")}
             <input
               type="number"
               min={1}
@@ -435,12 +445,12 @@ export default function ConsultasClient() {
       return (
         <div className={styles.filtersGridCombined}>
           <label className={styles.fieldCombinedCountry}>
-            Pais
+            {tr("Pais", "Country")}
             <select
               value={combinedFilters.countryIso}
               onChange={(e) => setCombinedFilters((p) => ({ ...p, countryIso: e.target.value }))}
             >
-              <option value="">Todos</option>
+              <option value="">{tr("Todos", "All")}</option>
               {countries.map((country) => (
                 <option key={`comb-${country.iso3}-${country.country_name}`} value={country.iso3 || ""}>
                   {country.country_name} ({country.iso3 || "N/A"})
@@ -449,12 +459,12 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldCombinedA}>
-            Mineral A
+            {tr("Mineral A", "Mineral A")}
             <select
               value={combinedFilters.mineralA}
               onChange={(e) => setCombinedFilters((p) => ({ ...p, mineralA: e.target.value }))}
             >
-              <option value="">Seleccionar</option>
+              <option value="">{tr("Seleccionar", "Select")}</option>
               {minerals.map((mineral) => (
                 <option key={`comb-a-${mineral}`} value={mineral}>
                   {mineral}
@@ -463,12 +473,12 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldCombinedB}>
-            Mineral B
+            {tr("Mineral B", "Mineral B")}
             <select
               value={combinedFilters.mineralB}
               onChange={(e) => setCombinedFilters((p) => ({ ...p, mineralB: e.target.value }))}
             >
-              <option value="">Seleccionar</option>
+              <option value="">{tr("Seleccionar", "Select")}</option>
               {minerals.map((mineral) => (
                 <option key={`comb-b-${mineral}`} value={mineral}>
                   {mineral}
@@ -477,12 +487,12 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldCombinedExclude}>
-            Excluir mineral (opcional)
+            {tr("Excluir mineral (opcional)", "Exclude mineral (optional)")}
             <select
               value={combinedFilters.excludeMineral}
               onChange={(e) => setCombinedFilters((p) => ({ ...p, excludeMineral: e.target.value }))}
             >
-              <option value="">Todos</option>
+              <option value="">{tr("Todos", "All")}</option>
               {minerals.map((mineral) => (
                 <option key={`comb-ex-${mineral}`} value={mineral}>
                   {mineral}
@@ -491,7 +501,7 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldCombinedLimit}>
-            Limite
+            {tr("Limite", "Limit")}
             <input
               type="number"
               min={1}
@@ -510,12 +520,12 @@ export default function ConsultasClient() {
       return (
         <div className={styles.filtersGridSpatial}>
           <label className={styles.fieldSpatialCountry}>
-            Pais
+            {tr("Pais", "Country")}
             <select
               value={spatialFilters.countryIso}
               onChange={(e) => setSpatialFilters((p) => ({ ...p, countryIso: e.target.value }))}
             >
-              <option value="">Seleccionar pais</option>
+              <option value="">{tr("Seleccionar pais", "Select country")}</option>
               {countries.map((country) => (
                 <option key={`sp-${country.iso3}-${country.country_name}`} value={country.iso3 || ""}>
                   {country.country_name} ({country.iso3 || "N/A"})
@@ -524,13 +534,13 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldSpatialBase}>
-            Deposito base
+            {tr("Deposito base", "Base deposit")}
             <select
               value={spatialFilters.baseDepId}
               onChange={(e) => setSpatialFilters((p) => ({ ...p, baseDepId: e.target.value }))}
               disabled={!spatialFilters.countryIso}
             >
-              <option value="">Seleccionar deposito</option>
+              <option value="">{tr("Seleccionar deposito", "Select deposit")}</option>
               {spatialCountryDeposits.map((dep) => (
                 <option key={`base-${dep.dep_id}`} value={dep.dep_id}>
                   {dep.name}
@@ -539,7 +549,7 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldSpatialRadius}>
-            Radio (km)
+            {tr("Radio (km)", "Radius (km)")}
             <input
               type="range"
               min={1}
@@ -553,12 +563,12 @@ export default function ConsultasClient() {
             <span>{formatNumber(spatialFilters.radiusKm)} km</span>
           </label>
           <label className={styles.fieldSpatialMineral}>
-            Mineral opcional
+            {tr("Mineral opcional", "Optional mineral")}
             <select
               value={spatialFilters.mineral}
               onChange={(e) => setSpatialFilters((p) => ({ ...p, mineral: e.target.value }))}
             >
-              <option value="">Todos</option>
+              <option value="">{tr("Todos", "All")}</option>
               {(spatialMinerals.length ? spatialMinerals : minerals).map((mineral) => (
                 <option key={`spatial-min-${mineral}`} value={mineral}>
                   {mineral}
@@ -567,7 +577,7 @@ export default function ConsultasClient() {
             </select>
           </label>
           <label className={styles.fieldSpatialLimit}>
-            Limite
+            {tr("Limite", "Limit")}
             <input
               type="number"
               min={1}
@@ -585,7 +595,7 @@ export default function ConsultasClient() {
     return (
       <div className={styles.filtersGrid}>
         <label>
-          Minimo depositos
+          {tr("Minimo depositos", "Minimum deposits")}
           <input
             type="number"
             min={0}
@@ -597,12 +607,12 @@ export default function ConsultasClient() {
           />
           {profileBounds && (
             <span className={styles.inputHint}>
-              Sugerido: {formatNumber(profileBounds.deposits_min)} - {formatNumber(profileBounds.deposits_max)}
+              {tr("Sugerido", "Suggested")}: {formatNumber(profileBounds.deposits_min)} - {formatNumber(profileBounds.deposits_max)}
             </span>
           )}
         </label>
         <label>
-          PIB minimo (USD B)
+          {tr("PIB minimo (USD B)", "GDP minimum (USD B)")}
           <input
             type="number"
             step="any"
@@ -615,11 +625,11 @@ export default function ConsultasClient() {
             onChange={(e) => setProfileFilters((p) => ({ ...p, gdpMin: e.target.value }))}
           />
           {profileBounds && (
-            <span className={styles.inputHint}>Min registrado: {formatUsdBillions(profileBounds.gdp_min || 0)}</span>
+            <span className={styles.inputHint}>{tr("Min registrado", "Recorded min")}: {formatUsdBillions(profileBounds.gdp_min || 0)}</span>
           )}
         </label>
         <label>
-          PIB maximo (USD B)
+          {tr("PIB maximo (USD B)", "GDP maximum (USD B)")}
           <input
             type="number"
             step="any"
@@ -632,11 +642,11 @@ export default function ConsultasClient() {
             onChange={(e) => setProfileFilters((p) => ({ ...p, gdpMax: e.target.value }))}
           />
           {profileBounds && (
-            <span className={styles.inputHint}>Max registrado: {formatUsdBillions(profileBounds.gdp_max || 0)}</span>
+            <span className={styles.inputHint}>{tr("Max registrado", "Recorded max")}: {formatUsdBillions(profileBounds.gdp_max || 0)}</span>
           )}
         </label>
         <label>
-          CPI minimo
+          {tr("CPI minimo", "CPI minimum")}
           <input
             type="number"
             value={profileFilters.cpiMin}
@@ -644,11 +654,11 @@ export default function ConsultasClient() {
             onChange={(e) => setProfileFilters((p) => ({ ...p, cpiMin: e.target.value }))}
           />
           {profileBounds && (
-            <span className={styles.inputHint}>Min registrado: {formatNumber(profileBounds.cpi_min || 0, 2)}</span>
+            <span className={styles.inputHint}>{tr("Min registrado", "Recorded min")}: {formatNumber(profileBounds.cpi_min || 0, 2)}</span>
           )}
         </label>
         <label>
-          CPI maximo
+          {tr("CPI maximo", "CPI maximum")}
           <input
             type="number"
             value={profileFilters.cpiMax}
@@ -656,11 +666,11 @@ export default function ConsultasClient() {
             onChange={(e) => setProfileFilters((p) => ({ ...p, cpiMax: e.target.value }))}
           />
           {profileBounds && (
-            <span className={styles.inputHint}>Max registrado: {formatNumber(profileBounds.cpi_max || 0, 2)}</span>
+            <span className={styles.inputHint}>{tr("Max registrado", "Recorded max")}: {formatNumber(profileBounds.cpi_max || 0, 2)}</span>
           )}
         </label>
         <label>
-          FSI minimo
+          {tr("FSI minimo", "FSI minimum")}
           <input
             type="number"
             value={profileFilters.fsiMin}
@@ -668,11 +678,11 @@ export default function ConsultasClient() {
             onChange={(e) => setProfileFilters((p) => ({ ...p, fsiMin: e.target.value }))}
           />
           {profileBounds && (
-            <span className={styles.inputHint}>Min registrado: {formatNumber(profileBounds.fsi_min || 0, 2)}</span>
+            <span className={styles.inputHint}>{tr("Min registrado", "Recorded min")}: {formatNumber(profileBounds.fsi_min || 0, 2)}</span>
           )}
         </label>
         <label>
-          FSI maximo
+          {tr("FSI maximo", "FSI maximum")}
           <input
             type="number"
             value={profileFilters.fsiMax}
@@ -680,11 +690,11 @@ export default function ConsultasClient() {
             onChange={(e) => setProfileFilters((p) => ({ ...p, fsiMax: e.target.value }))}
           />
           {profileBounds && (
-            <span className={styles.inputHint}>Max registrado: {formatNumber(profileBounds.fsi_max || 0, 2)}</span>
+            <span className={styles.inputHint}>{tr("Max registrado", "Recorded max")}: {formatNumber(profileBounds.fsi_max || 0, 2)}</span>
           )}
         </label>
         <label>
-          Limite
+          {tr("Limite", "Limit")}
           <input
             type="number"
             min={1}
@@ -711,12 +721,12 @@ export default function ConsultasClient() {
           <table className={styles.compactTable}>
             <thead>
               <tr>
-                <th>Pais</th>
-                <th>Depositos</th>
+                <th>{tr("Pais", "Country")}</th>
+                <th>{tr("Depositos", "Deposits")}</th>
                 <th>PIB</th>
                 <th>CPI</th>
                 <th>FSI</th>
-                <th>Intensidad relativa</th>
+                <th>{tr("Intensidad relativa", "Relative intensity")}</th>
               </tr>
             </thead>
             <tbody>
@@ -741,12 +751,12 @@ export default function ConsultasClient() {
         <table className={styles.compactTable}>
           <thead>
             <tr>
-              <th>Deposito</th>
-              <th>Pais</th>
-              {activeMode === "spatial" && <th>Distancia (km)</th>}
-              {activeMode === "deposits" && <th>Estado</th>}
-              {activeMode === "deposits" && <th>Cantidad minerales</th>}
-              <th>Minerales asociados</th>
+              <th>{tr("Deposito", "Deposit")}</th>
+              <th>{tr("Pais", "Country")}</th>
+              {activeMode === "spatial" && <th>{tr("Distancia (km)", "Distance (km)")}</th>}
+              {activeMode === "deposits" && <th>{tr("Estado", "Status")}</th>}
+              {activeMode === "deposits" && <th>{tr("Cantidad minerales", "Minerals count")}</th>}
+              <th>{tr("Minerales asociados", "Associated minerals")}</th>
             </tr>
           </thead>
           <tbody>
@@ -768,30 +778,13 @@ export default function ConsultasClient() {
 
   return (
     <div className="page-shell">
-      <header className="nav">
-        <div className="brand">
-          <span className="brand-dot" />
-          <div>
-            <strong>GeoContext</strong>
-            <br />
-            <span>Plataforma Analitica</span>
-          </div>
-        </div>
-        <nav className="menu">
-          <Link href="/">Inicio</Link>
-          <Link href="/explorar">Explorar</Link>
-          <Link href="/comparar">Comparar</Link>
-          <Link href="/analisis">Analisis</Link>
-          <Link href="/terreno">Terreno</Link>
-          <Link href="/consultas">Consultas</Link>
-        </nav>
-      </header>
+      <AppHeader />
 
       <main className="container">
         <section className="panel">
-          <h2>Consultas</h2>
+          <h2>{t(lang, "queriesTitle")}</h2>
           <p className="muted">
-            Explora depositos, minerales y relaciones espaciales mediante consultas guiadas.
+            {t(lang, "queriesHint")}
           </p>
           <p className="muted">
             Construye busquedas usando filtros simples sin necesidad de conocimientos tecnicos.
@@ -811,7 +804,7 @@ export default function ConsultasClient() {
                   setError("");
                 }}
               >
-                {mode.label}
+                {modeLabel(mode.id)}
               </button>
             ))}
           </div>
@@ -819,52 +812,55 @@ export default function ConsultasClient() {
 
         <section className="panel">
           <h3>
-            {MODES.find((m) => m.id === activeMode)?.label}{" "}
+            {modeLabel(activeMode)}{" "}
             {activeMode === "spatial" && (
               <InfoHint text="Busqueda basada en proximidad geografica usando registros georreferenciados." />
             )}
           </h3>
           <p className={`muted ${styles.helpText}`}>
-            Selecciona filtros y ejecuta una consulta para ver resultados compactos.
+            {tr(
+              "Selecciona filtros y ejecuta una consulta para ver resultados compactos.",
+              "Select filters and run a query to see compact results.",
+            )}
           </p>
           {renderFilters()}
           <div className={styles.actionsRow}>
             <button type="button" onClick={runQuery}>
-              Ejecutar consulta
+              {t(lang, "queriesRun")}
             </button>
           </div>
-          {loading && <p className="muted">Consultando datos...</p>}
-          {error && <p className="muted">Error: {error}</p>}
+          {loading && <p className="muted">{tr("Consultando datos...", "Querying data...")}</p>}
+          {error && <p className="muted">{tr("Error", "Error")}: {error}</p>}
         </section>
 
         <section className="panel">
           <div className={styles.resultWrap}>
             <div className={styles.resultHeader}>
-              <p className={styles.resultCount}>Resultados: {formatNumber(result.result_count || 0)}</p>
+              <p className={styles.resultCount}>{tr("Resultados", "Results")}: {formatNumber(result.result_count || 0)}</p>
               <div className={styles.actionsRow}>
                 <button type="button" className={styles.mutedBtn} onClick={exportCsv}>
-                  Exportar CSV
+                  {t(lang, "queriesExportCsv")}
                 </button>
                 <button type="button" className={styles.mutedBtn} onClick={exportJson}>
-                  Exportar JSON
+                  {t(lang, "queriesExportJson")}
                 </button>
                 {activeMode === "spatial" && (
                   <button type="button" className={styles.mutedBtn} onClick={exportGeoJson}>
-                    Exportar GeoJSON
+                    {t(lang, "queriesExportGeoJson")}
                   </button>
                 )}
               </div>
             </div>
 
             <p className={`muted ${styles.summaryText}`}>
-              {result.summary || "No se encontraron registros para los criterios seleccionados."}
+              {result.summary || tr("No se encontraron registros para los criterios seleccionados.", "No records found for selected criteria.")}
             </p>
 
             {renderTable()}
 
             {activeMode === "spatial" && spatialMapRows.length > 0 && (
               <div>
-                <p className="muted">Vista espacial compacta</p>
+                <p className="muted">{tr("Vista espacial compacta", "Compact spatial view")}</p>
                 <div className={styles.smallMap}>
                   <SpatialResultsMap rows={spatialMapRows} />
                 </div>
@@ -875,7 +871,10 @@ export default function ConsultasClient() {
 
         <section className="panel">
           <p className="muted">
-            Los resultados se basan en registros integrados desde datasets geologicos y contextuales.
+            {tr(
+              "Los resultados se basan en registros integrados desde datasets geologicos y contextuales.",
+              "Results are based on records integrated from geological and contextual datasets.",
+            )}
           </p>
         </section>
       </main>

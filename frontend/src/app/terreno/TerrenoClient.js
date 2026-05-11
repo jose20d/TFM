@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { Circle, CircleMarker, GeoJSON, MapContainer, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import styles from "./terreno.module.css";
+import AppHeader from "../../components/AppHeader";
+import { t, useLang, withLang } from "../../lib/i18n";
 
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -161,6 +162,8 @@ function ZoneAutoZoom({ points, center, radiusKm, countryIso, trigger }) {
 }
 
 export default function TerrenoClient() {
+  const lang = useLang();
+  const tr = useCallback((es, en) => (lang === "en" ? en : es), [lang]);
   const [activeTool, setActiveTool] = useState("corridor");
   const [countries, setCountries] = useState([]);
   const [countryIso, setCountryIso] = useState("");
@@ -204,23 +207,23 @@ export default function TerrenoClient() {
 
   const toolTabs = useMemo(
     () => [
-      { id: "corridor", label: "Corredor entre depositos" },
-      { id: "zone", label: "Zona de interes" },
-      { id: "minerals", label: "Minerales frecuentes" },
-      { id: "potential", label: "Potencial exploratorio" },
+      { id: "corridor", label: tr("Corredor entre depositos", "Corridor between deposits") },
+      { id: "zone", label: tr("Zona de interes", "Area of interest") },
+      { id: "minerals", label: tr("Minerales frecuentes", "Frequent minerals") },
+      { id: "potential", label: tr("Potencial exploratorio", "Exploratory potential") },
     ],
-    [],
+    [tr],
   );
 
   useEffect(() => {
-    fetch("/api/backend/api/v1/countries?limit=300", { cache: "no-store" })
+    fetch(withLang("/api/backend/api/v1/countries?limit=300", lang), { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
       })
       .then((data) => setCountries(Array.isArray(data) ? data : []))
       .catch(() => setCountries([]));
-  }, []);
+  }, [lang]);
 
   const countryLabel = useMemo(() => {
     const match = countries.find((country) => country.iso3 === countryIso);
@@ -251,7 +254,7 @@ export default function TerrenoClient() {
 
     const controller = new AbortController();
     setCountryLoading(true);
-    fetch(`/api/backend/api/v1/explore/deposits?country_iso3=${countryIso}&limit=5000`, {
+    fetch(withLang(`/api/backend/api/v1/explore/deposits?country_iso3=${countryIso}&limit=5000`, lang), {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -283,12 +286,14 @@ export default function TerrenoClient() {
       })
       .catch((err) => {
         if (err?.name === "AbortError") return;
-        setCountryError(err?.message || "No fue posible cargar depositos del pais seleccionado.");
+        setCountryError(
+          err?.message || tr("No fue posible cargar depositos del pais seleccionado.", "Could not load deposits for selected country."),
+        );
       })
       .finally(() => setCountryLoading(false));
 
     return () => controller.abort();
-  }, [countryIso]);
+  }, [countryIso, lang, tr]);
 
   useEffect(() => {
     setZoneCountryDeposits([]);
@@ -303,7 +308,7 @@ export default function TerrenoClient() {
 
     const controller = new AbortController();
     setZoneCountryLoading(true);
-    fetch(`/api/backend/api/v1/explore/deposits?country_iso3=${zoneCountryIso}&limit=5000`, {
+    fetch(withLang(`/api/backend/api/v1/explore/deposits?country_iso3=${zoneCountryIso}&limit=5000`, lang), {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -336,12 +341,14 @@ export default function TerrenoClient() {
       })
       .catch((err) => {
         if (err?.name === "AbortError") return;
-        setZoneCountryError(err?.message || "No fue posible cargar depositos del pais seleccionado.");
+        setZoneCountryError(
+          err?.message || tr("No fue posible cargar depositos del pais seleccionado.", "Could not load deposits for selected country."),
+        );
       })
       .finally(() => setZoneCountryLoading(false));
 
     return () => controller.abort();
-  }, [zoneCountryIso]);
+  }, [zoneCountryIso, lang, tr]);
 
   useEffect(() => {
     setFreqMineral("");
@@ -363,7 +370,7 @@ export default function TerrenoClient() {
 
     const controller = new AbortController();
     fetch(
-      `/api/backend/api/v1/terrain/frequent-minerals?country_iso3=${potentialCountryIso}&show_all=true&limit=50`,
+      withLang(`/api/backend/api/v1/terrain/frequent-minerals?country_iso3=${potentialCountryIso}&show_all=true&limit=50`, lang),
       { cache: "no-store", signal: controller.signal },
     )
       .then((response) => {
@@ -390,7 +397,7 @@ export default function TerrenoClient() {
       });
 
     return () => controller.abort();
-  }, [potentialCountryIso]);
+  }, [potentialCountryIso, lang]);
 
   const depositsById = useMemo(() => {
     const map = new Map();
@@ -513,7 +520,7 @@ export default function TerrenoClient() {
     setAnalysisLoading(true);
     setAnalysisError("");
     try {
-      const response = await fetch(`/api/backend/api/v1/terrain/corridor?${qs.toString()}`, {
+      const response = await fetch(withLang(`/api/backend/api/v1/terrain/corridor?${qs.toString()}`, lang), {
         cache: "no-store",
       });
       const payload = await response.json();
@@ -525,12 +532,12 @@ export default function TerrenoClient() {
     } catch (error) {
       if (requestId !== analysisSeqRef.current) return;
       setCorridorResult(null);
-      setAnalysisError(error?.message || "No fue posible ejecutar el analisis del corredor.");
+      setAnalysisError(error?.message || tr("No fue posible ejecutar el analisis del corredor.", "Could not run corridor analysis."));
     } finally {
       if (requestId !== analysisSeqRef.current) return;
       setAnalysisLoading(false);
     }
-  }, [countryIso, selectedFromId, selectedToId, widthKm]);
+  }, [countryIso, selectedFromId, selectedToId, widthKm, lang, tr]);
 
   useEffect(() => {
     if (activeTool !== "corridor") return;
@@ -626,7 +633,7 @@ export default function TerrenoClient() {
           limit: String(freqLimit),
         });
         if (freqMineral.trim()) qs.set("mineral", freqMineral.trim());
-        const response = await fetch(`/api/backend/api/v1/terrain/frequent-minerals?${qs.toString()}`, {
+        const response = await fetch(withLang(`/api/backend/api/v1/terrain/frequent-minerals?${qs.toString()}`, lang), {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -637,7 +644,7 @@ export default function TerrenoClient() {
       } catch (error) {
         if (error?.name === "AbortError") return;
         setFreqResult(null);
-        setFreqError(error?.message || "No fue posible cargar minerales frecuentes.");
+        setFreqError(error?.message || tr("No fue posible cargar minerales frecuentes.", "Could not load frequent minerals."));
       } finally {
         setFreqLoading(false);
       }
@@ -647,7 +654,7 @@ export default function TerrenoClient() {
       controller.abort();
       clearTimeout(timeoutId);
     };
-  }, [activeTool, freqCountryIso, freqMineral, freqLimit]);
+  }, [activeTool, freqCountryIso, freqMineral, freqLimit, lang, tr]);
 
   useEffect(() => {
     if (activeTool !== "potential") return;
@@ -663,7 +670,7 @@ export default function TerrenoClient() {
           mineral: potentialMineral.trim(),
           intensity_level: potentialIntensity,
         });
-        const response = await fetch(`/api/backend/api/v1/terrain/exploratory-potential?${qs.toString()}`, {
+        const response = await fetch(withLang(`/api/backend/api/v1/terrain/exploratory-potential?${qs.toString()}`, lang), {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -674,7 +681,7 @@ export default function TerrenoClient() {
       } catch (error) {
         if (error?.name === "AbortError") return;
         setPotentialResult(null);
-        setPotentialError(error?.message || "No fue posible analizar el potencial exploratorio.");
+        setPotentialError(error?.message || tr("No fue posible analizar el potencial exploratorio.", "Could not analyze exploratory potential."));
       } finally {
         setPotentialLoading(false);
       }
@@ -684,7 +691,7 @@ export default function TerrenoClient() {
       controller.abort();
       clearTimeout(timeoutId);
     };
-  }, [activeTool, potentialCountryIso, potentialMineral, potentialIntensity]);
+  }, [activeTool, potentialCountryIso, potentialMineral, potentialIntensity, lang, tr]);
 
   function clearZone() {
     zoneSeqRef.current += 1;
@@ -717,7 +724,7 @@ export default function TerrenoClient() {
     setZoneAnalysisLoading(true);
     setZoneAnalysisError("");
     try {
-      const response = await fetch(`/api/backend/api/v1/terrain/zone-interest?${qs.toString()}`, {
+      const response = await fetch(withLang(`/api/backend/api/v1/terrain/zone-interest?${qs.toString()}`, lang), {
         cache: "no-store",
       });
       const payload = await response.json();
@@ -729,12 +736,12 @@ export default function TerrenoClient() {
     } catch (error) {
       if (requestId !== zoneSeqRef.current) return;
       setZoneResult(null);
-      setZoneAnalysisError(error?.message || "No fue posible ejecutar el analisis de zona.");
+      setZoneAnalysisError(error?.message || tr("No fue posible ejecutar el analisis de zona.", "Could not run area analysis."));
     } finally {
       if (requestId !== zoneSeqRef.current) return;
       setZoneAnalysisLoading(false);
     }
-  }, [zoneCountryIso, zoneCenter, zoneRadiusKm]);
+  }, [zoneCountryIso, zoneCenter, zoneRadiusKm, lang, tr]);
 
   useEffect(() => {
     if (activeTool !== "zone") return;
@@ -1693,30 +1700,12 @@ export default function TerrenoClient() {
 
   return (
     <div className="page-shell">
-      <header className="nav">
-        <div className="brand">
-          <span className="brand-dot" />
-          <div>
-            <strong>GeoContext</strong>
-            <br />
-            <span>Plataforma Analitica</span>
-          </div>
-        </div>
-        <nav className="menu">
-          <Link href="/">Inicio</Link>
-          <Link href="/explorar">Explorar</Link>
-          <Link href="/comparar">Comparar</Link>
-          <Link href="/analisis">Analisis</Link>
-          <Link href="/terreno">Terreno</Link>
-          <Link href="/consultas">Consultas</Link>
-        </nav>
-      </header>
+      <AppHeader />
 
       <main className="container">
         <section className={`panel ${styles.heroPanel}`}>
           <p className="muted">
-            Herramientas para explorar zonas de interes mineralogico a partir de depositos registrados, proximidad
-            espacial y minerales asociados.
+            {t(lang, "terrainHint")}
           </p>
         </section>
 

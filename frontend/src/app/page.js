@@ -1,5 +1,6 @@
 import Image from "next/image";
-import Link from "next/link";
+import AppHeader from "../components/AppHeader";
+import { normalizeLang, t, withLang } from "../lib/i18n-core";
 
 const BACKEND_URL = process.env.BACKEND_API_URL || "http://127.0.0.1:8001";
 
@@ -146,8 +147,9 @@ function resolveCountrySelection(rawTerm, countries, fallbackIso3) {
 
 export default async function Home({ searchParams }) {
   const params = await searchParams;
+  const lang = normalizeLang(params?.lang);
   const [countries, defaults] = await Promise.all([
-    readJson("/api/v1/countries?limit=300", []),
+    readJson(withLang("/api/v1/countries?limit=300", lang), []),
     readJson("/api/v1/home/defaults", {}),
   ]);
   const defaultIso3 = defaults.default_iso3 || "N/A";
@@ -156,10 +158,10 @@ export default async function Home({ searchParams }) {
   const iso3 = selected.iso3;
 
   const [overview, topCountries, topMinerals, country, dataHealth] = await Promise.all([
-    readJson("/api/v1/overview", {}),
-    readJson("/api/v1/top-countries?limit=5", []),
-    readJson("/api/v1/top-minerals?limit=5", []),
-    readJson(`/api/v1/countries/${iso3}/summary`, {}),
+    readJson(withLang("/api/v1/overview", lang), {}),
+    readJson(withLang("/api/v1/top-countries?limit=5", lang), []),
+    readJson(withLang("/api/v1/top-minerals?limit=5", lang), []),
+    readJson(withLang(`/api/v1/countries/${iso3}/summary`, lang), {}),
     readJson("/api/v1/health", {}),
   ]);
 
@@ -167,30 +169,20 @@ export default async function Home({ searchParams }) {
     topMinerals.length > 0 ? topMinerals.slice(0, 3).map((item) => item.commod).join(" | ") : "N/A";
 
   const insights = [
-    `Top productores: ${topCountries.slice(0, 3).map((item) => item.country_name).join(", ") || "N/A"}`,
-    `Minerales lideres: ${topMinerals.slice(0, 3).map((item) => item.commod).join(", ") || "N/A"}`,
-    `Pais destacado: ${country.country_name || "N/A"} (${country.iso3 || iso3})`,
+    lang === "en"
+      ? `Top producers: ${topCountries.slice(0, 3).map((item) => item.country_name).join(", ") || "N/A"}`
+      : `Top productores: ${topCountries.slice(0, 3).map((item) => item.country_name).join(", ") || "N/A"}`,
+    lang === "en"
+      ? `Leading minerals: ${topMinerals.slice(0, 3).map((item) => item.commod).join(", ") || "N/A"}`
+      : `Minerales lideres: ${topMinerals.slice(0, 3).map((item) => item.commod).join(", ") || "N/A"}`,
+    lang === "en"
+      ? `Highlighted country: ${country.country_name || "N/A"} (${country.iso3 || iso3})`
+      : `Pais destacado: ${country.country_name || "N/A"} (${country.iso3 || iso3})`,
   ];
 
   return (
     <div className="page-shell">
-      <header className="nav">
-        <div className="brand">
-          <span className="brand-dot" />
-          <div>
-            <strong>GeoContext</strong>
-            <br />
-            <span>Plataforma Analitica</span>
-          </div>
-        </div>
-        <nav className="menu">
-          <Link href="/explorar">Explorar</Link>
-          <Link href="/comparar">Comparar</Link>
-          <Link href="/analisis">Analisis</Link>
-          <Link href="/terreno">Terreno</Link>
-          <Link href="/consultas">Consultas</Link>
-        </nav>
-      </header>
+      <AppHeader />
 
       <main className="container">
         <section className="hero">
@@ -209,7 +201,11 @@ export default async function Home({ searchParams }) {
                 <p className="kpi-label">
                   <InfoHint
                     label="Paises analizados"
-                    text="Cantidad de paises con registros integrados desde datasets geologicos y contextuales."
+                    text={
+                      lang === "en"
+                        ? "Number of countries with integrated geological and contextual records."
+                        : "Cantidad de paises con registros integrados desde datasets geologicos y contextuales."
+                    }
                   />
                 </p>
                 <p className="kpi-value numeric-value">{formatInteger(overview.countries_count)}</p>
@@ -218,20 +214,28 @@ export default async function Home({ searchParams }) {
                 <p className="kpi-label">
                   <InfoHint
                     label="Depositos minerales"
-                    text="Total de registros mineralogicos integrados en la plataforma."
+                    text={
+                      lang === "en"
+                        ? "Total mineral deposit records integrated into the platform."
+                        : "Total de registros mineralogicos integrados en la plataforma."
+                    }
                   />
                 </p>
                 <p className="kpi-value numeric-value">{formatInteger(overview.deposits_count)}</p>
               </article>
               <article className="kpi-card">
-                <p className="kpi-label">Minerales principales</p>
+                <p className="kpi-label">{lang === "en" ? "Top Minerals" : "Minerales principales"}</p>
                 <p className="kpi-value" style={{ fontSize: "1.05rem" }}>{topMineralsLabel}</p>
               </article>
               <article className="kpi-card">
                 <p className="kpi-label">
                   <InfoHint
                     label="Prom. IPC"
-                    text="Promedio del indice de percepcion de corrupcion (CPI). Valores altos indican menor corrupcion percibida."
+                    text={
+                      lang === "en"
+                        ? "Average Corruption Perception Index (CPI). Higher values indicate lower perceived corruption."
+                        : "Promedio del indice de percepcion de corrupcion (CPI). Valores altos indican menor corrupcion percibida."
+                    }
                   />
                 </p>
                 <p className="kpi-value kpi-accent numeric-value">{formatNumber(overview.avg_cpi)}</p>
@@ -240,7 +244,11 @@ export default async function Home({ searchParams }) {
                 <p className="kpi-label">
                   <InfoHint
                     label="Prom. EFI"
-                    text="Indice de fragilidad estatal. Valores altos representan mayor fragilidad institucional."
+                    text={
+                      lang === "en"
+                        ? "State Fragility Index. Higher values represent higher institutional fragility."
+                        : "Indice de fragilidad estatal. Valores altos representan mayor fragilidad institucional."
+                    }
                   />
                 </p>
                 <p className="kpi-value kpi-accent numeric-value">{formatNumber(overview.avg_fsi)}</p>
@@ -251,19 +259,20 @@ export default async function Home({ searchParams }) {
 
         <section className="grid">
           <article className="panel">
-            <h2>Principales paises con recursos</h2>
+            <h2>{t(lang, "homeTitle")}</h2>
             <ul className="countries-list">
               {topCountries.map((item) => (
                 <li key={`${item.country_name}-${item.iso3}`}>
                   <strong>{item.country_name}</strong> ({item.iso3 || "N/A"}) -{" "}
-                  <span className="numeric-value">{formatInteger(item.total_deposits)}</span> depositos
+                  <span className="numeric-value">{formatInteger(item.total_deposits)}</span>{" "}
+                  {lang === "en" ? "deposits" : "depositos"}
                 </li>
               ))}
             </ul>
           </article>
 
           <article className="panel">
-            <h2>Ideas clave</h2>
+            <h2>{t(lang, "homeIdeas")}</h2>
             <div className="insights">
               {insights.map((item) => (
                 <p key={item} className="muted">
@@ -276,16 +285,19 @@ export default async function Home({ searchParams }) {
 
         <section className="grid">
           <article className="panel">
-            <h2>Perfil de pais</h2>
-            <p className="muted">Busca por nombre, ISO2 o ISO3.</p>
+            <h2>{t(lang, "homeProfile")}</h2>
+            <p className="muted">
+              {lang === "en" ? "Search by name, ISO2 or ISO3." : "Busca por nombre, ISO2 o ISO3."}
+            </p>
             <form className="country-form" method="get">
+              <input type="hidden" name="lang" value={lang} />
               <input
                 name="pais"
                 list="countries-options"
                 defaultValue={selected.label}
-                placeholder="Ejemplo: Costa Rica, CR o CRI"
+                placeholder={lang === "en" ? "Example: Costa Rica, CR or CRI" : "Ejemplo: Costa Rica, CR o CRI"}
               />
-              <button type="submit">Cargar</button>
+              <button type="submit">{t(lang, "homeLoad")}</button>
             </form>
             <datalist id="countries-options">
               {countries.map((country) => (
@@ -300,7 +312,7 @@ export default async function Home({ searchParams }) {
 
             <div className="summary-grid">
               <div className="summary-item">
-                <h3>Pais</h3>
+                <h3>{lang === "en" ? "Country" : "Pais"}</h3>
                 <p>{country.country_name || "N/A"}</p>
               </div>
               <div className="summary-item">
@@ -308,7 +320,7 @@ export default async function Home({ searchParams }) {
                 <p>{country.iso3 || iso3}</p>
               </div>
               <div className="summary-item">
-                <h3>Depositos</h3>
+                <h3>{lang === "en" ? "Deposits" : "Depositos"}</h3>
                 <p className="numeric-value">{formatInteger(country.deposits_count)}</p>
               </div>
               <div className="summary-item">
@@ -316,11 +328,11 @@ export default async function Home({ searchParams }) {
                 <p className="numeric-value">{formatBillions(country.gdp)}</p>
               </div>
               <div className="summary-item">
-                <h3>Indice de corrupcion</h3>
+                <h3>{lang === "en" ? "Corruption Index" : "Indice de corrupcion"}</h3>
                 <p className="numeric-value">{formatNumber(country.cpi)}</p>
               </div>
               <div className="summary-item">
-                <h3>Indice de fragilidad</h3>
+                <h3>{lang === "en" ? "Fragility Index" : "Indice de fragilidad"}</h3>
                 <p className="numeric-value">{formatNumber(country.fsi)}</p>
               </div>
             </div>
@@ -330,7 +342,11 @@ export default async function Home({ searchParams }) {
             <h2>
               <InfoHint
                 label="Top minerales"
-                text="Mineral registrado en multiples depositos integrados."
+                text={
+                  lang === "en"
+                    ? "Mineral registered across multiple integrated deposits."
+                    : "Mineral registrado en multiples depositos integrados."
+                }
               />
             </h2>
             <ul className="minerals-list">
@@ -338,13 +354,17 @@ export default async function Home({ searchParams }) {
                 <li key={item.commod}>
                   <strong
                     className="acronym-hint"
-                    data-tooltip="Mineral registrado en multiples depositos integrados."
+                    data-tooltip={
+                      lang === "en"
+                        ? "Mineral registered across multiple integrated deposits."
+                        : "Mineral registrado en multiples depositos integrados."
+                    }
                     tabIndex={0}
                   >
                     {item.commod}
                   </strong>{" "}
                   - <span className="numeric-value">{formatInteger(item.occurrences)}</span>{" "}
-                  ocurrencias
+                  {lang === "en" ? "occurrences" : "ocurrencias"}
                 </li>
               ))}
             </ul>

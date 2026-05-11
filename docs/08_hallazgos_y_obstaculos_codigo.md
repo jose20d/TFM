@@ -39,11 +39,13 @@ Este documento resume hallazgos tecnicos y obstaculos identificados al revisar e
 - **Inconsistencia de parseo/formato numerico en frontend**: se detecto que distintas vistas aplicaban reglas diferentes para representar los mismos indicadores (ej. PIB absoluto en `Inicio` vs PIB en `USD B` en `Comparar`, y miles sin separador en algunos listados). El backend expone valores crudos; la divergencia ocurria en la capa de presentacion por funciones de parseo/formateo no unificadas.
 - **Distribucion altamente sesgada en analisis global**: al graficar indicadores por pais (PIB/FSI vs depositos), la presencia de outliers y varios ordenes de magnitud comprimio la mayor parte de puntos cerca del origen. Se requirio escala logaritmica en ejes para mejorar legibilidad y poder identificar patrones sin distorsion visual extrema.
 - **Outliers geograficos en visualizacion por pais**: en `Explorar`, al filtrar por un pais (ej. Australia) se observan puntos aislados fuera del territorio esperado. Esto sugiere ruido de coordenadas o asignacion pais-coordenada no siempre consistente en una fraccion de registros MRDS, y puede sesgar interpretacion territorial si no se controla.
+- **Spanglish estructural en valores de negocio**: los datasets fuente llegan mayoritariamente en ingles (`Gold`, `Silver`, nombres de paises, etc.) mientras la UX objetivo es bilingue (100% espanol / 100% ingles). Sin una capa i18n de datos, la interfaz mezcla idiomas y degrada consistencia semantica.
 
 ### 3.3 Rendimiento y escalabilidad
 
 - **ETL de gran volumen ejecutado en un solo proceso**: el pipeline completo puede volverse costoso en tiempo/memoria al crecer datos.
 - **Consultas de mapa con limites altos**: endpoints con limite hasta 10k puntos requieren control de paginacion/cluster si aumenta uso concurrente.
+- **Caso extremo USA (volumen masivo de depositos)**: en exploracion, USA concentra un volumen muy superior al resto (~263k depositos georreferenciados). Intentar cargar ese universo en un solo ciclo (consulta + JSON + render) degrada severamente backend y frontend, y puede percibirse como "falla" por parte del usuario final.
 
 ## 4) Riesgos asociados
 
@@ -64,6 +66,8 @@ Este documento resume hallazgos tecnicos y obstaculos identificados al revisar e
 6. **Prioridad media**: centralizar utilidades de parseo y formato numerico en frontend (unidad unica para miles/decimales, politicas de `N/A`, y reglas por indicador como `PIB -> USD B`) para evitar regresiones visuales entre paginas.
 7. **Prioridad media**: documentar y estandarizar criterios de escala en visualizaciones (lineal vs logaritmica) segun distribucion de datos, para evitar lecturas engañosas cuando existan outliers fuertes.
 8. **Prioridad media**: definir una estrategia de control geoespacial para outliers (reglas de bounding box por pais, validacion con fronteras Admin0/Admin1 y bandera de calidad de coordenadas) y aplicarla antes de renderizar mapas de exploracion.
+9. **Prioridad alta**: mantener una estrategia i18n hibrida para datos de dominio (diccionario canonico + materializacion bilingue en ETL) para evitar traduccion ad-hoc en frontend y preservar rendimiento en consultas.
+10. **Prioridad alta**: formalizar una politica unica para distribuciones extremas: paginacion y limites por pais en vistas geoespaciales, y uso de escala logaritmica en analisis cuando existan outliers de varios ordenes de magnitud.
 
 ## 6) Fragmentos de solucion aplicados
 
@@ -206,6 +210,89 @@ if (!targetRows.length) return;
 const points = targetRows
   .map((item) => [Number(item.latitude), Number(item.longitude)])
   .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
+```
+
+### 6.9 Estrategia i18n hibrida (diccionario canonico + materializacion ETL)
+
+Se implemento una capa de traduccion de datos en dos niveles:
+
+1. **Diccionario canonico** (`i18n_term_catalog` + `i18n_term_translation`): fuente de verdad para terminos y traducciones por idioma.
+2. **Tabla materializada de serving** (`i18n_term_materialized`): etiquetas `es/en` pre-resueltas para consulta rapida en API.
+
+Para acelerar arranque del diccionario, se incorporo una **semilla inicial** (`database/i18n_terms_seed.csv`) creada con IA y luego validada en el proyecto como punto de partida operativo.
+
+Fragmento ETL aplicado:
+
+```python
+def _refresh_i18n_materialized(cur) -> int:
+    cur.execute("TRUNCATE TABLE i18n_term_materialized")
+    cur.execute(
+        """
+        INSERT INTO i18n_term_materialized (
+            domain, source_value_norm, source_value_original, canonical_key, label_es, label_en
+        )
+        SELECT c.domain,
+               c.source_value_norm,
+               c.source_value_original,
+               c.canonical_key,
+               COALESCE(es.label, c.source_value_original) AS label_es,
+               COALESCE(en.label, c.source_value_original) AS label_en
+        FROM i18n_term_catalog c
+        LEFT JOIN i18n_term_translation es
+               ON es.canonical_key = c.canonical_key AND es.lang = 'es'
+        LEFT JOIN i18n_term_translation en
+               ON en.canonical_key = c.canonical_key AND en.lang = 'en'
+        """
+    )
+    return cur.rowcount
+```
+
+Fragmento API aplicado (entrada/salida bilingue):
+
+```python
+selected_mineral = (_resolve_source_term("mineral", mineral) or "").strip()
+...
+return _localize_payload(payload, lang)
+```
+
+Resultado: se evita el spanglish visible en frontend, se permite filtrar por terminos en ambos idiomas y se mantiene costo bajo por consulta gracias a materializacion previa.
+
+### 6.10 Cobertura de traduccion ampliada en base de datos
+
+Ademas de `country` y `mineral`, el ETL ahora extrae terminos para dominios adicionales que tambien aparecen en consultas o en futuras vistas:
+
+- `deposit_status` (`mrds_deposit.dev_stat`)
+- `region` / `state_province` (`mrds_location.region`, `mrds_location.state_prov`)
+- `ownership_type` (`mrds_ownership.owner_tp`)
+- `material` / `ore_gangue` (`mrds_material.material`, `mrds_material.ore_gangue`)
+- `rock_class` + ordenes litologicos (`mrds_rocks.*`)
+- `age_type` (`mrds_ages.age_tp`)
+- `phys_division` / `phys_province` / `phys_section` / `phys_detail` (`mrds_physiography.*`)
+
+Con esto, el proceso de traduccion queda preparado para cubrir la mayor parte de texto de dominio de la BD sin depender de hardcodes en frontend.
+
+### 6.11 Caso USA: volumen extremo y decision tecnica de visualizacion
+
+Se incorporo este hallazgo porque impacta directamente percepcion de calidad del producto:
+
+- **Hecho observado**: USA tiene un volumen excepcionalmente alto de depositos georreferenciados (~263k), muy por encima de la mayoria de paises.
+- **Impacto tecnico**: devolver/renderizar todo en una sola carga provoca latencia alta, payloads pesados y bloqueo de interfaz.
+- **Decision aplicada en Exploracion**: no renderizar mundo sin pais, paginar resultados y sincronizar mapa-lista por pagina (mismo subconjunto visible).
+- **Decision aplicada en Analisis**: mantener ejes logaritmicos en graficos globales para evitar compresion visual de paises no outlier.
+
+Fragmentos representativos:
+
+```python
+# Exploracion: sin pais, sin puntos
+iso3 = (country_iso3 or "").strip().upper()
+if not iso3:
+    return []
+```
+
+```javascript
+// Analisis global: escala logaritmica para outliers
+<XAxis type="number" dataKey="gdpB" scale="log" domain={["auto", "auto"]} />
+<YAxis type="number" dataKey="total_deposits" scale="log" domain={["auto", "auto"]} />
 ```
 
 ## 7) Conclusion ejecutiva

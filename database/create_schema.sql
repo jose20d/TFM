@@ -259,3 +259,52 @@ ALTER TABLE dim_country
 
 ALTER TABLE iso_country_codes
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- =========================
+-- I18N dictionary and materialized labels (hybrid strategy)
+-- =========================
+
+CREATE TABLE IF NOT EXISTS i18n_term_catalog (
+    term_id BIGSERIAL PRIMARY KEY,
+    domain TEXT NOT NULL,
+    source_value_norm TEXT NOT NULL,
+    source_value_original TEXT NOT NULL,
+    canonical_key TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (domain, source_value_norm),
+    UNIQUE (domain, canonical_key)
+);
+
+CREATE TABLE IF NOT EXISTS i18n_term_translation (
+    translation_id BIGSERIAL PRIMARY KEY,
+    canonical_key TEXT NOT NULL,
+    lang CHAR(2) NOT NULL,
+    label TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (canonical_key, lang)
+);
+
+CREATE TABLE IF NOT EXISTS i18n_term_materialized (
+    mat_id BIGSERIAL PRIMARY KEY,
+    domain TEXT NOT NULL,
+    source_value_norm TEXT NOT NULL,
+    source_value_original TEXT NOT NULL,
+    canonical_key TEXT NOT NULL,
+    label_es TEXT NOT NULL,
+    label_en TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (domain, source_value_norm)
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'i18n_translation_lang_check'
+    ) THEN
+        ALTER TABLE i18n_term_translation
+        ADD CONSTRAINT i18n_translation_lang_check
+        CHECK (lang IN ('es', 'en'));
+    END IF;
+END $$;

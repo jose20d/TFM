@@ -1,0 +1,408 @@
+domain,source_value,canonical_key,label_es,label_en
+mineral,Abrasive,mineral_abrasive,Abrasivo,Abrasive
+mineral,"Aggregate, Light Weight",mineral_aggregate_light_weight,Agregado liviano,"Aggregate, Light Weight"
+mineral,Aluminum,mineral_aluminum,Aluminio,Aluminum
+mineral,"Aluminum, Contained or Metal",mineral_aluminum_contained_or_metal,"Aluminio, contenido o metal","Aluminum, Contained or Metal"
+mineral,"Aluminum, High Alumina Clay",mineral_aluminum_high_alumina_clay,"Aluminio, arcilla alta en alúmina","Aluminum, High Alumina Clay"
+mineral,Andalusite,mineral_andalusite,Andalusita,Andalusite
+mineral,Anthracite,mineral_anthracite,Antracita,Anthracite
+mineral,Antimony,mineral_antimony,Antimonio,Antimony
+mineral,Arsenic,mineral_arsenic,Arsénico,Arsenic
+mineral,Asbestos,mineral_asbestos,Asbesto,Asbestos
+mineral,Ash,mineral_ash,Ceniza,Ash
+mineral,Ball Clay,mineral_ball_clay,Arcilla de bola,Ball Clay
+mineral,Barium-Barite,mineral_barium_barite,Bario-Barita,Barium-Barite
+mineral,Bentonite,mineral_bentonite,Bentonita,Bentonite
+mineral,Beryllium,mineral_beryllium,Berilio,Beryllium
+mineral,Bismuth,mineral_bismuth,Bismuto,Bismuth
+mineral,Bituminous,mineral_bituminous,Bituminoso,Bituminous
+mineral,Bloating Material,mineral_bloating_material,Material expansivo,Bloating Material
+mineral,Boron-Borates,mineral_boron_borates,Boro-Boratos,Boron-Borates
+mineral,Brick Clay,mineral_brick_clay,Arcilla para ladrillo,Brick Clay
+mineral,Bromine,mineral_bromine,Bromo,Bromine
+mineral,Cadmium,mineral_cadmium,Cadmio,Cadmium
+mineral,Calcium,mineral_calcium,Calcio,Calcium
+mineral,Carbon Dioxide,mineral_carbon_dioxide,Dióxido de carbono,Carbon Dioxide
+mineral,Cement Rock,mineral_cement_rock,Roca para cemento,Cement Rock
+mineral,Cerium,mineral_cerium,Cerio,Cerium
+mineral,Cesium,mineral_cesium,Cesio,Cesium
+mineral,Chlorine,mineral_chlorine,Cloro,Chlorine
+mineral,Chlorite,mineral_chlorite,Clorita,Chlorite
+mineral,Chromium,mineral_chromium,Cromo,Chromium
+mineral,"Chromium, Ferrochrome",mineral_chromium_ferrochrome,"Cromo, ferrocromo","Chromium, Ferrochrome"
+mineral,Clay,mineral_clay,Arcilla,Clay
+mineral,Coal,mineral_coal,Carbón,Coal
+mineral,Cobalt,mineral_cobalt,Cobalto,Cobalt
+mineral,Copper,mineral_copper,Cobre,Copper
+mineral,Copper Oxide,mineral_copper_oxide,Óxido de cobre,Copper Oxide
+mineral,Copper Sulfide,mineral_copper_sulfide,Sulfuro de cobre,Copper Sulfide
+mineral,Corundum,mineral_corundum,Corindón,Corundum
+mineral,Diamond,mineral_diamond,Diamante,Diamond
+mineral,Diatomite,mineral_diatomite,Diatomita,Diatomite
+mineral,Dolomite,mineral_dolomite,Dolomita,Dolomite
+mineral,Emerald,mineral_emerald,Esmeralda,Emerald
+mineral,Emery,mineral_emery,Esmeril,Emery
+mineral,Feldspar,mineral_feldspar,Feldespato,Feldspar
+mineral,Fire Clay (Refractory),mineral_fire_clay_refractory,Arcilla refractaria,Fire Clay (Refractory)
+mineral,Flagstone,mineral_flagstone,Laja,Flagstone
+mineral,Flint,mineral_flint,Sílex,Flint
+mineral,Fluorine-Fluorite,mineral_fluorine_fluorite,Flúor-Fluorita,Fluorine-Fluorite
+mineral,Fullers Earth,mineral_fullers_earth,Tierra de batán,Fullers Earth
+mineral,Gallium,mineral_gallium,Galio,Gallium
+mineral,Garnet,mineral_garnet,Granate,Garnet
+mineral,Gemstone,mineral_gemstone,Gema,Gemstone
+mineral,Geothermal,mineral_geothermal,Geotermia,Geothermal
+mineral,Germanium,mineral_germanium,Germanio,Germanium
+mineral,Gilsonite,mineral_gilsonite,Gilsonita,Gilsonite
+mineral,Gold,mineral_gold,Oro,Gold
+mineral,"Gold, Refinery",mineral_gold_refinery,"Oro, refinería","Gold, Refinery"
+mineral,Granite,mineral_granite,Granito,Granite
+mineral,"Granite, Dimension",mineral_granite_dimension,Granito dimensional,"Granite, Dimension"
+mineral,Graphite,mineral_graphite,Grafito,Graphite
+mineral,Gypsum-Anhydrite,mineral_gypsum_anhydrite,Yeso-Anhidrita,Gypsum-Anhydrite
+mineral,"Gypsum-Anhydrite, Alabaster",mineral_gypsum_anhydrite_alabaster,"Yeso-Anhidrita, Alabastro","Gypsum-Anhydrite, Alabaster"
+mineral,Hafnium,mineral_hafnium,Hafnio,Hafnium
+mineral,Halite,mineral_halite,Halita,Halite
+mineral,Hectorite,mineral_hectorite,Hectorita,Hectorite
+mineral,Helium,mineral_helium,Helio,Helium
+mineral,Indium,mineral_indium,Indio,Indium
+mineral,Iodine,mineral_iodine,Yodo,Iodine
+mineral,Iridium,mineral_iridium,Iridio,Iridium
+mineral,Iron,mineral_iron,Hierro,Iron
+mineral,Iron Oxide Pigments,mineral_iron_oxide_pigments,Pigmentos de óxido de hierro,Iron Oxide Pigments
+mineral,"Iron, Pig Iron",mineral_iron_pig_iron,"Hierro, arrabio","Iron, Pig Iron"
+mineral,Iron-Pyrite,mineral_iron_pyrite,Hierro-Pirita,Iron-Pyrite
+mineral,Jade,mineral_jade,Jade,Jade
+mineral,Kaolin,mineral_kaolin,Caolín,Kaolin
+mineral,Kyanite,mineral_kyanite,Cianita,Kyanite
+mineral,Lead,mineral_lead,Plomo,Lead
+mineral,"Lead, Refiner",mineral_lead_refiner,"Plomo, refinado","Lead, Refiner"
+mineral,"Lead, Smelter",mineral_lead_smelter,"Plomo, fundición","Lead, Smelter"
+mineral,Lignite,mineral_lignite,Lignito,Lignite
+mineral,"Limestone, Crushed/Broken",mineral_limestone_crushed_broken,Caliza triturada/fracturada,"Limestone, Crushed/Broken"
+mineral,"Limestone, Dimension",mineral_limestone_dimension,Caliza dimensional,"Limestone, Dimension"
+mineral,"Limestone, General",mineral_limestone_general,"Caliza, general","Limestone, General"
+mineral,"Limestone, High Calcium",mineral_limestone_high_calcium,Caliza de alto calcio,"Limestone, High Calcium"
+mineral,"Limestone, Ultra Pure",mineral_limestone_ultra_pure,Caliza ultrapura,"Limestone, Ultra Pure"
+mineral,Lithium,mineral_lithium,Litio,Lithium
+mineral,Magnesite,mineral_magnesite,Magnesita,Magnesite
+mineral,Magnesium Compounds,mineral_magnesium_compounds,Compuestos de magnesio,Magnesium Compounds
+mineral,Manganese,mineral_manganese,Manganeso,Manganese
+mineral,"Manganese, Ferromanganese",mineral_manganese_ferromanganese,"Manganeso, ferromanganeso","Manganese, Ferromanganese"
+mineral,"Marble, Dimension",mineral_marble_dimension,Mármol dimensional,"Marble, Dimension"
+mineral,Mercury,mineral_mercury,Mercurio,Mercury
+mineral,Mica,mineral_mica,Mica,Mica
+mineral,Mineral Pigments,mineral_mineral_pigments,Pigmentos minerales,Mineral Pigments
+mineral,Molybdenum,mineral_molybdenum,Molibdeno,Molybdenum
+mineral,Montmorillonite,mineral_montmorillonite,Montmorillonita,Montmorillonite
+mineral,Natural Gas,mineral_natural_gas,Gas natural,Natural Gas
+mineral,Nickel,mineral_nickel,Níquel,Nickel
+mineral,Nickel Laterite,mineral_nickel_laterite,Laterita de níquel,Nickel Laterite
+mineral,"Nickel, Refiner",mineral_nickel_refiner,"Níquel, refinado","Nickel, Refiner"
+mineral,"Nickel, Smelter",mineral_nickel_smelter,"Níquel, fundición","Nickel, Smelter"
+mineral,Niobium (Columbium),mineral_niobium_columbium,Niobio (Columbio),Niobium (Columbium)
+mineral,Nitrogen-Nitrates,mineral_nitrogen_nitrates,Nitrógeno-Nitratos,Nitrogen-Nitrates
+mineral,Oil Sands,mineral_oil_sands,Arenas bituminosas,Oil Sands
+mineral,Oil Shale,mineral_oil_shale,Esquisto bituminoso,Oil Shale
+mineral,Olivine,mineral_olivine,Olivino,Olivine
+mineral,Osmium,mineral_osmium,Osmio,Osmium
+mineral,Palladium,mineral_palladium,Paladio,Palladium
+mineral,Peat,mineral_peat,Turba,Peat
+mineral,Perlite,mineral_perlite,Perlita,Perlite
+mineral,Petroleum (Oil),mineral_petroleum_oil,Petróleo,Petroleum (Oil)
+mineral,PGE,mineral_pge,Metales del grupo del platino,PGE
+mineral,Phosphorus-Phosphates,mineral_phosphates,Fósforo-Fosfatos,Phosphorus-Phosphates
+mineral,Platinum,mineral_platinum,Platino,Platinum
+mineral,Potassium,mineral_potassium,Potasio,Potassium
+mineral,"Potassium, Potash",mineral_potassium_potash,"Potasio, potasa","Potassium, Potash"
+mineral,Pumice,mineral_pumice,Piedra pómez,Pumice
+mineral,Pyrite,mineral_pyrite,Pirita,Pyrite
+mineral,Pyrophyllite,mineral_pyrophyllite,Pirofilita,Pyrophyllite
+mineral,Quartz,mineral_quartz,Cuarzo,Quartz
+mineral,Radium,mineral_radium,Radio,Radium
+mineral,REE,mineral_ree,Tierras raras,REE
+mineral,Rhenium,mineral_rhenium,Renio,Rhenium
+mineral,Rhodium,mineral_rhodium,Rodio,Rhodium
+mineral,Rock Asphalt,mineral_rock_asphalt,Roca Asphalt,Rock Asphalt
+mineral,Rubidium,mineral_rubidium,Rubidio,Rubidium
+mineral,Ruby,mineral_ruby,Rubí,Ruby
+mineral,Ruthenium,mineral_ruthenium,Rutenio,Ruthenium
+mineral,Salt,mineral_salt,Sal,Salt
+mineral,Sand,mineral_sand,Arena,Sand
+mineral,"Sand and Gravel, Construction",mineral_sand_and_gravel_construction,Arena y grava para construcción,"Sand and Gravel, Construction"
+mineral,"Sand and Gravel, Industrial",mineral_sand_and_gravel_industrial,Arena y grava industrial,"Sand and Gravel, Industrial"
+mineral,"Sand and Gravel, Industrial/Frac Sand",mineral_sand_and_gravel_industrial_frac_sand,Arena y grava industrial/arena de fractura,"Sand and Gravel, Industrial/Frac Sand"
+mineral,"Sandstone, Crushed/Broken",mineral_sandstone_crushed_broken,Arenisca triturada/fracturada,"Sandstone, Crushed/Broken"
+mineral,"Sandstone, Dimension",mineral_sandstone_dimension,Arenisca dimensional,"Sandstone, Dimension"
+mineral,Sapphire,mineral_sapphire,Zafiro,Sapphire
+mineral,Scandium,mineral_scandium,Escandio,Scandium
+mineral,Selenium,mineral_selenium,Selenio,Selenium
+mineral,Semiprecious Gemstone,mineral_semiprecious_gemstone,Semipreciosa Gema,Semiprecious Gemstone
+mineral,Silica,mineral_silica,Sílice,Silica
+mineral,"Silica, Ferrosilicon",mineral_silica_ferrosilicon,"Sílice, Ferrosilicon","Silica, Ferrosilicon"
+mineral,Silver,mineral_silver,Plata,Silver
+mineral,"Silver, Refinery",mineral_silver_refinery,"Plata, refinería","Silver, Refinery"
+mineral,"Slate, Dimension",mineral_slate_dimension,Pizarra dimensional,"Slate, Dimension"
+mineral,Soda Ash,mineral_soda_ash,Carbonato de sodio,Soda Ash
+mineral,Sodium,mineral_sodium,Sodio,Sodium
+mineral,Sodium Carbonate,mineral_sodium_carbonate,Carbonato de sodio,Sodium Carbonate
+mineral,Sodium Sulfate,mineral_sodium_sulfate,Sulfato de sodio,Sodium Sulfate
+mineral,Staurolite,mineral_staurolite,Estaurolita,Staurolite
+mineral,Stone,mineral_stone,Piedra,Stone
+mineral,"Stone, Crushed/Broken",mineral_stone_crushed_broken,Piedra triturada/fracturada,"Stone, Crushed/Broken"
+mineral,"Stone, Dimension",mineral_stone_dimension,"Piedra, Dimensional","Stone, Dimension"
+mineral,Strontium,mineral_strontium,Estroncio,Strontium
+mineral,Subbituminous,mineral_subbituminous,Subbituminoso,Subbituminous
+mineral,Sulfides,mineral_sulfides,Sulfuros,Sulfides
+mineral,Sulfur,mineral_sulfur,Azufre,Sulfur
+mineral,Sulfur-Pyrite,mineral_sulfur_pyrite,Azufre-Pirita,Sulfur-Pyrite
+mineral,"Sulfur, Sulfuric Acid",mineral_sulfur_sulfuric_acid,"Azufre, ácido sulfúrico","Sulfur, Sulfuric Acid"
+mineral,Talc-Soapstone,mineral_talc_soapstone,Talco-Esteatita,Talc-Soapstone
+mineral,Tantalum,mineral_tantalum,Tantalio,Tantalum
+mineral,Tantalum from Tin Slag,mineral_tantalum_from_tin_slag,Tantalio de escoria de estaño,Tantalum from Tin Slag
+mineral,Tellurium,mineral_tellurium,Telurio,Tellurium
+mineral,Thallium,mineral_thallium,Talio,Thallium
+mineral,Thorium,mineral_thorium,Torio,Thorium
+mineral,Tin,mineral_tin,Estaño,Tin
+mineral,"Tin, Tailings",mineral_tin_tailings,"Estaño, Tailings","Tin, Tailings"
+mineral,Titanium,mineral_titanium,Titanio,Titanium
+mineral,Titanium-Heavy Minerals,mineral_titanium_heavy_minerals,Titanio-Minerales pesados,Titanium-Heavy Minerals
+mineral,Titanium-Ilmenite,mineral_titanium_ilmenite,Titanio-Ilmenita,Titanium-Ilmenite
+mineral,"Titanium, Metal",mineral_titanium_metal,Titanio metálico,"Titanium, Metal"
+mineral,"Titanium, Pigment",mineral_titanium_pigment,"Titanio, pigmento","Titanium, Pigment"
+mineral,Titanium-Rutile,mineral_titanium_rutile,Titanio-Rutilo,Titanium-Rutile
+mineral,Travertine,mineral_travertine,Travertino,Travertine
+mineral,Tripoli,mineral_tripoli,Trípoli,Tripoli
+mineral,Tungsten,mineral_tungsten,Wolframio,Tungsten
+mineral,"Tungsten, Mill Concentrate",mineral_tungsten_mill_concentrate,"Wolframio, concentrado de molino","Tungsten, Mill Concentrate"
+mineral,"Tungsten, Refinery",mineral_tungsten_refinery,"Wolframio, refinería","Tungsten, Refinery"
+mineral,Uranium,mineral_uranium,Uranio,Uranium
+mineral,Vanadium,mineral_vanadium,Vanadio,Vanadium
+mineral,Vermiculite,mineral_vermiculite,Vermiculita,Vermiculite
+mineral,Volcanic Materials,mineral_volcanic_materials,Materiales volcánicos,Volcanic Materials
+mineral,"Water, Free",mineral_water_free,Agua libre,"Water, Free"
+mineral,Wollastonite,mineral_wollastonite,Wollastonita,Wollastonite
+mineral,Yttrium,mineral_yttrium,Itrio,Yttrium
+mineral,Zeolites,mineral_zeolites,Zeolitas,Zeolites
+mineral,Zinc,mineral_zinc,Cinc,Zinc
+mineral,"Zinc, Refiner",mineral_zinc_refiner,"Zinc, refinado","Zinc, Refiner"
+mineral,"Zinc, Smelter",mineral_zinc_smelter,"Zinc, fundición","Zinc, Smelter"
+mineral,Zirconium,mineral_zirconium,Circonio,Zirconium
+country,Afghanistan,country_afghanistan,Afganistán,Afghanistan
+country,Albania,country_albania,Albania,Albania
+country,Algeria,country_algeria,Argelia,Algeria
+country,American Samoa,country_american_samoa,Samoa Americana,American Samoa
+country,Andorra,country_andorra,Andorra,Andorra
+country,Angola,country_angola,Angola,Angola
+country,Antigua and Barbuda,country_antigua_and_barbuda,Antigua y Barbuda,Antigua and Barbuda
+country,Argentina,country_argentina,Argentina,Argentina
+country,Armenia,country_armenia,Armenia,Armenia
+country,Aruba,country_aruba,Aruba,Aruba
+country,Australia,country_australia,Australia,Australia
+country,Austria,country_austria,Austria,Austria
+country,Azerbaijan,country_azerbaijan,Azerbaiyán,Azerbaijan
+country,Bahamas,country_bahamas,Bahamas,Bahamas
+country,Bahrain,country_bahrain,Baréin,Bahrain
+country,Bangladesh,country_bangladesh,Bangladés,Bangladesh
+country,Barbados,country_barbados,Barbados,Barbados
+country,Belarus,country_belarus,Bielorrusia,Belarus
+country,Belgium,country_belgium,Bélgica,Belgium
+country,Belize,country_belize,Belice,Belize
+country,Benin,country_benin,Benín,Benin
+country,Bermuda,country_bermuda,Bermudas,Bermuda
+country,Bhutan,country_bhutan,Bután,Bhutan
+country,Bolivia,country_bolivia,Bolivia,Bolivia
+country,Bosnia and Herzegovina,country_bosnia_and_herzegovina,Bosnia y Herzegovina,Bosnia and Herzegovina
+country,Botswana,country_botswana,Botsuana,Botswana
+country,Brazil,country_brazil,Brasil,Brazil
+country,British Virgin Islands,country_british_virgin_islands,Islas Vírgenes Británicas,British Virgin Islands
+country,Brunei Darussalam,country_brunei_darussalam,Brunéi,Brunei Darussalam
+country,Bulgaria,country_bulgaria,Bulgaria,Bulgaria
+country,Burkina Faso,country_burkina_faso,Burkina Faso,Burkina Faso
+country,Burundi,country_burundi,Burundi,Burundi
+country,Cabo Verde,country_cabo_verde,Cabo Verde,Cabo Verde
+country,Cambodia,country_cambodia,Camboya,Cambodia
+country,Cameroon,country_cameroon,Camerún,Cameroon
+country,Canada,country_canada,Canadá,Canada
+country,Cape Verde,country_cape_verde,Cabo Verde,Cape Verde
+country,Cayman Islands,country_cayman_islands,Islas Caimán,Cayman Islands
+country,Central African Republic,country_central_african_republic,República Centroafricana,Central African Republic
+country,Chad,country_chad,Chad,Chad
+country,Chile,country_chile,Chile,Chile
+country,China,country_china,China,China
+country,Colombia,country_colombia,Colombia,Colombia
+country,Comoros,country_comoros,Comoras,Comoros
+country,"Congo, Dem. Rep.",country_congo_dem_rep,República Democrática del Congo,"Congo, Dem. Rep."
+country,"Congo, Rep.",country_congo_rep,Congo,"Congo, Rep."
+country,Costa Rica,country_costa_rica,Costa Rica,Costa Rica
+country,Cote d'Ivoire,country_cote_d_ivoire,Côte d’Ivoire,Cote d'Ivoire
+country,Croatia,country_croatia,Croacia,Croatia
+country,Cuba,country_cuba,Cuba,Cuba
+country,Curacao,country_curacao,Curazao,Curacao
+country,Cyprus,country_cyprus,Chipre,Cyprus
+country,Czechia,country_czechia,Chequia,Czechia
+country,Denmark,country_denmark,Dinamarca,Denmark
+country,Djibouti,country_djibouti,Yibuti,Djibouti
+country,Dominica,country_dominica,Dominica,Dominica
+country,Dominican Republic,country_dominican_republic,República Dominicana,Dominican Republic
+country,Ecuador,country_ecuador,Ecuador,Ecuador
+country,"Egypt, Arab Rep.",country_egypt_arab_rep,Egipto,"Egypt, Arab Rep."
+country,El Salvador,country_el_salvador,El Salvador,El Salvador
+country,Equatorial Guinea,country_equatorial_guinea,Guinea Ecuatorial,Equatorial Guinea
+country,Eritrea,country_eritrea,Eritrea,Eritrea
+country,Estonia,country_estonia,Estonia,Estonia
+country,Eswatini,country_eswatini,Esuatini,Eswatini
+country,Ethiopia,country_ethiopia,Etiopía,Ethiopia
+country,Faroe Islands,country_faroe_islands,Islas Feroe,Faroe Islands
+country,Fiji,country_fiji,Fiyi,Fiji
+country,Finland,country_finland,Finlandia,Finland
+country,France,country_france,Francia,France
+country,French Polynesia,country_french_polynesia,Polinesia Francesa,French Polynesia
+country,Gabon,country_gabon,Gabón,Gabon
+country,Gambia,country_gambia,Gambia,Gambia
+country,Georgia,country_georgia,Georgia,Georgia
+country,Germany,country_germany,Alemania,Germany
+country,Ghana,country_ghana,Ghana,Ghana
+country,Gibraltar,country_gibraltar,Gibraltar,Gibraltar
+country,Greece,country_greece,Grecia,Greece
+country,Greenland,country_greenland,Groenlandia,Greenland
+country,Grenada,country_grenada,Granada,Grenada
+country,Guam,country_guam,Guam,Guam
+country,Guatemala,country_guatemala,Guatemala,Guatemala
+country,Guinea,country_guinea,Guinea,Guinea
+country,Guinea Bissau,country_guinea_bissau,Guinea-Bisáu,Guinea Bissau
+country,Guyana,country_guyana,Guyana,Guyana
+country,Haiti,country_haiti,Haití,Haiti
+country,Honduras,country_honduras,Honduras,Honduras
+country,Hong Kong,country_hong_kong,RAE de Hong Kong (China),Hong Kong
+country,Hungary,country_hungary,Hungría,Hungary
+country,Iceland,country_iceland,Islandia,Iceland
+country,India,country_india,India,India
+country,Indonesia,country_indonesia,Indonesia,Indonesia
+country,Iran,country_iran,Irán,Iran
+country,Iraq,country_iraq,Irak,Iraq
+country,Ireland,country_ireland,Irlanda,Ireland
+country,Isle of Man,country_isle_of_man,Isla de Man,Isle of Man
+country,Israel,country_israel,Israel,Israel
+country,Italy,country_italy,Italia,Italy
+country,Jamaica,country_jamaica,Jamaica,Jamaica
+country,Japan,country_japan,Japón,Japan
+country,Jordan,country_jordan,Jordania,Jordan
+country,Kazakhstan,country_kazakhstan,Kazajistán,Kazakhstan
+country,Kenya,country_kenya,Kenia,Kenya
+country,Kiribati,country_kiribati,Kiribati,Kiribati
+country,"Korea, Dem. People's Rep.",country_korea_dem_people_s_rep,Corea del Norte,"Korea, Dem. People's Rep."
+country,"Korea, Rep.",country_korea_rep,Corea del Sur,"Korea, Rep."
+country,Kuwait,country_kuwait,Kuwait,Kuwait
+country,Kyrgyzstan,country_kyrgyzstan,Kirguistán,Kyrgyzstan
+country,Laos,country_laos,Laos,Laos
+country,Latvia,country_latvia,Letonia,Latvia
+country,Lebanon,country_lebanon,Líbano,Lebanon
+country,Lesotho,country_lesotho,Lesoto,Lesotho
+country,Liberia,country_liberia,Liberia,Liberia
+country,Libya,country_libya,Libia,Libya
+country,Liechtenstein,country_liechtenstein,Liechtenstein,Liechtenstein
+country,Lithuania,country_lithuania,Lituania,Lithuania
+country,Luxembourg,country_luxembourg,Luxemburgo,Luxembourg
+country,"Macao SAR, China",country_macao_sar_china,RAE de Macao (China),"Macao SAR, China"
+country,Madagascar,country_madagascar,Madagascar,Madagascar
+country,Malawi,country_malawi,Malaui,Malawi
+country,Malaysia,country_malaysia,Malasia,Malaysia
+country,Maldives,country_maldives,Maldivas,Maldives
+country,Mali,country_mali,Mali,Mali
+country,Malta,country_malta,Malta,Malta
+country,Marshall Islands,country_marshall_islands,Islas Marshall,Marshall Islands
+country,Mauritania,country_mauritania,Mauritania,Mauritania
+country,Mauritius,country_mauritius,Mauricio,Mauritius
+country,Mexico,country_mexico,México,Mexico
+country,Micronesia,country_micronesia,Micronesia,Micronesia
+country,"Micronesia, Fed. Sts.",country_micronesia_fed_sts,Micronesia,"Micronesia, Fed. Sts."
+country,Moldova,country_moldova,Moldavia,Moldova
+country,Monaco,country_monaco,Mónaco,Monaco
+country,Mongolia,country_mongolia,Mongolia,Mongolia
+country,Montenegro,country_montenegro,Montenegro,Montenegro
+country,Morocco,country_morocco,Marruecos,Morocco
+country,Mozambique,country_mozambique,Mozambique,Mozambique
+country,Myanmar,country_myanmar,Myanmar (Birmania),Myanmar
+country,Namibia,country_namibia,Namibia,Namibia
+country,Nauru,country_nauru,Nauru,Nauru
+country,Nepal,country_nepal,Nepal,Nepal
+country,Netherlands,country_netherlands,Países Bajos,Netherlands
+country,New Caledonia,country_new_caledonia,Nueva Caledonia,New Caledonia
+country,New Zealand,country_new_zealand,Nueva Zelanda,New Zealand
+country,Nicaragua,country_nicaragua,Nicaragua,Nicaragua
+country,Niger,country_niger,Níger,Niger
+country,Nigeria,country_nigeria,Nigeria,Nigeria
+country,Northern Mariana Islands,country_northern_mariana_islands,Islas Marianas del Norte,Northern Mariana Islands
+country,North Macedonia,country_north_macedonia,Macedonia del Norte,North Macedonia
+country,Norway,country_norway,Noruega,Norway
+country,Oman,country_oman,Omán,Oman
+country,Pakistan,country_pakistan,Pakistán,Pakistan
+country,Palau,country_palau,Palaos,Palau
+country,Panama,country_panama,Panamá,Panama
+country,Papua New Guinea,country_papua_new_guinea,Papúa Nueva Guinea,Papua New Guinea
+country,Paraguay,country_paraguay,Paraguay,Paraguay
+country,Peru,country_peru,Perú,Peru
+country,Philippines,country_philippines,Filipinas,Philippines
+country,Poland,country_poland,Polonia,Poland
+country,Portugal,country_portugal,Portugal,Portugal
+country,Puerto Rico (US),country_puerto_rico_us,Puerto Rico,Puerto Rico (US)
+country,Qatar,country_qatar,Catar,Qatar
+country,Romania,country_romania,Rumanía,Romania
+country,Russian Federation,country_russian_federation,Rusia,Russian Federation
+country,Rwanda,country_rwanda,Ruanda,Rwanda
+country,Saint Lucia,country_saint_lucia,Santa Lucía,Saint Lucia
+country,Samoa,country_samoa,Samoa,Samoa
+country,San Marino,country_san_marino,San Marino,San Marino
+country,Sao Tome and Principe,country_sao_tome_and_principe,Santo Tomé y Príncipe,Sao Tome and Principe
+country,Saudi Arabia,country_saudi_arabia,Arabia Saudí,Saudi Arabia
+country,Senegal,country_senegal,Senegal,Senegal
+country,Serbia,country_serbia,Serbia,Serbia
+country,Seychelles,country_seychelles,Seychelles,Seychelles
+country,Sierra Leone,country_sierra_leone,Sierra Leona,Sierra Leone
+country,Singapore,country_singapore,Singapur,Singapore
+country,Sint Maarten (Dutch part),country_sint_maarten_dutch_part,Sint Maarten,Sint Maarten (Dutch part)
+country,Slovakia,country_slovakia,Eslovaquia,Slovakia
+country,Slovenia,country_slovenia,Eslovenia,Slovenia
+country,Solomon Islands,country_solomon_islands,Islas Salomón,Solomon Islands
+country,Somalia,country_somalia,Somalia,Somalia
+country,South Africa,country_south_africa,Sudáfrica,South Africa
+country,South Sudan,country_south_sudan,Sudán del Sur,South Sudan
+country,Spain,country_spain,España,Spain
+country,Sri Lanka,country_sri_lanka,Sri Lanka,Sri Lanka
+country,St. Kitts and Nevis,country_st_kitts_and_nevis,San Cristóbal y Nieves,St. Kitts and Nevis
+country,St. Martin (French part),country_st_martin_french_part,San Martín,St. Martin (French part)
+country,St. Vincent and the Grenadines,country_st_vincent_and_the_grenadines,San Vicente y las Granadinas,St. Vincent and the Grenadines
+country,Sudan,country_sudan,Sudán,Sudan
+country,Suriname,country_suriname,Surinam,Suriname
+country,Sweden,country_sweden,Suecia,Sweden
+country,Switzerland,country_switzerland,Suiza,Switzerland
+country,Syria,country_syria,Siria,Syria
+country,Taiwan,country_taiwan,Taiwán,Taiwan
+country,Tajikistan,country_tajikistan,Tayikistán,Tajikistan
+country,Tanzania,country_tanzania,Tanzania,Tanzania
+country,Thailand,country_thailand,Tailandia,Thailand
+country,Timor-Leste,country_timor_leste,Timor-Leste,Timor-Leste
+country,Togo,country_togo,Togo,Togo
+country,Tonga,country_tonga,Tonga,Tonga
+country,Trinidad and Tobago,country_trinidad_and_tobago,Trinidad y Tobago,Trinidad and Tobago
+country,Tunisia,country_tunisia,Túnez,Tunisia
+country,Turkiye,country_turkiye,Turquía,Turkiye
+country,Turkmenistan,country_turkmenistan,Turkmenistán,Turkmenistan
+country,Turks and Caicos Islands,country_turks_and_caicos_islands,Islas Turcas y Caicos,Turks and Caicos Islands
+country,Tuvalu,country_tuvalu,Tuvalu,Tuvalu
+country,Uganda,country_uganda,Uganda,Uganda
+country,Ukraine,country_ukraine,Ucrania,Ukraine
+country,United Arab Emirates,country_united_arab_emirates,Emiratos Árabes Unidos,United Arab Emirates
+country,United Kingdom,country_united_kingdom,Reino Unido,United Kingdom
+country,United States,country_united_states,Estados Unidos,United States
+country,Uruguay,country_uruguay,Uruguay,Uruguay
+country,Uzbekistan,country_uzbekistan,Uzbekistán,Uzbekistan
+country,Vanuatu,country_vanuatu,Vanuatu,Vanuatu
+country,Venezuela,country_venezuela,Venezuela,Venezuela
+country,Vietnam,country_vietnam,Vietnam,Vietnam
+country,Virgin Islands (U.S.),country_virgin_islands_u_s,Islas Vírgenes de EE. UU.,Virgin Islands (U.S.)
+country,West Bank and Gaza,country_west_bank_and_gaza,Territorios Palestinos,West Bank and Gaza
+country,"Yemen, Rep.",country_yemen_rep,Yemen,"Yemen, Rep."
+country,Zambia,country_zambia,Zambia,Zambia
+country,Zimbabwe,country_zimbabwe,Zimbabue,Zimbabwe

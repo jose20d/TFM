@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import AppHeader from "../../components/AppHeader";
+import { t, useLang, withLang } from "../../lib/i18n";
 import {
   Bar,
   BarChart,
@@ -148,6 +149,7 @@ function CountryRadialCard({ row, maxDeposits }) {
 }
 
 export default function CompareClient() {
+  const lang = useLang();
   const [countries, setCountries] = useState([]);
   const [selectedIso, setSelectedIso] = useState([]);
   const [rows, setRows] = useState([]);
@@ -161,7 +163,7 @@ export default function CompareClient() {
 
   useEffect(() => {
     Promise.all([
-      getJson("/api/backend/api/v1/countries?limit=300"),
+      getJson(withLang("/api/backend/api/v1/countries?limit=300", lang)),
       getJson("/api/backend/api/v1/home/defaults"),
       getJson("/api/backend/api/v1/health"),
     ])
@@ -183,14 +185,14 @@ export default function CompareClient() {
         setSelectedIso([]);
         setDbUp(false);
       });
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
     if (selectedIso.length < 2) {
       return;
     }
     const qs = selectedIso.map((iso) => `iso3=${encodeURIComponent(iso)}`).join("&");
-    getJson(`/api/backend/api/v1/countries/compare?${qs}`)
+    getJson(withLang(`/api/backend/api/v1/countries/compare?${qs}`, lang))
       .then((data) => {
         setRows(Array.isArray(data) ? data : []);
         setError("");
@@ -199,7 +201,7 @@ export default function CompareClient() {
         setRows([]);
         setError(err.message);
       });
-  }, [selectedIso]);
+  }, [selectedIso, lang]);
 
   const availableCountries = useMemo(() => {
     const selected = new Set(selectedIso);
@@ -252,13 +254,13 @@ export default function CompareClient() {
       if (bMissing) return -1;
 
       if (typeof aValue === "string" && typeof bValue === "string") {
-        return aValue.localeCompare(bValue, "es") * sortOrder;
+        return aValue.localeCompare(bValue, lang === "en" ? "en" : "es") * sortOrder;
       }
       return (aValue - bValue) * sortOrder;
     });
 
     return rowsCopy;
-  }, [visibleRows, sortConfig]);
+  }, [visibleRows, sortConfig, lang]);
 
   const exampleCountries = useMemo(() => {
     const selected = new Set(selectedIso);
@@ -314,39 +316,31 @@ export default function CompareClient() {
     return sortConfig.direction === "asc" ? "↑" : "↓";
   }
 
-  function sortHint(key, label) {
-    if (sortConfig.key !== key) return `Ordenar por ${label} (click para ascendente)`;
-    if (sortConfig.direction === "asc") {
-      return `Orden actual por ${label}: ascendente (click para descendente)`;
+  function sortHint(key, labelEs, labelEn) {
+    const label = lang === "en" ? labelEn : labelEs;
+    if (sortConfig.key !== key) {
+      return lang === "en"
+        ? `Sort by ${label} (click for ascending)`
+        : `Ordenar por ${label} (click para ascendente)`;
     }
-    return `Orden actual por ${label}: descendente (click para ascendente)`;
+    if (sortConfig.direction === "asc") {
+      return lang === "en"
+        ? `Current order by ${label}: ascending (click for descending)`
+        : `Orden actual por ${label}: ascendente (click para descendente)`;
+    }
+    return lang === "en"
+      ? `Current order by ${label}: descending (click for ascending)`
+      : `Orden actual por ${label}: descendente (click para ascendente)`;
   }
 
   return (
     <div className="page-shell">
-      <header className="nav">
-        <div className="brand">
-          <span className="brand-dot" />
-          <div>
-            <strong>GeoContext</strong>
-            <br />
-            <span>Plataforma Analitica</span>
-          </div>
-        </div>
-        <nav className="menu">
-          <Link href="/">Inicio</Link>
-          <Link href="/explorar">Explorar</Link>
-          <Link href="/comparar">Comparar</Link>
-          <Link href="/analisis">Analisis</Link>
-          <Link href="/terreno">Terreno</Link>
-          <Link href="/consultas">Consultas</Link>
-        </nav>
-      </header>
+      <AppHeader />
 
       <main className="container">
         <section className="panel compare-panel">
-          <h2>Comparar paises</h2>
-          <p className="muted">Selecciona 2 a 5 paises con chips sugeridos o buscador.</p>
+          <h2>{t(lang, "compareTitle")}</h2>
+          <p className="muted">{t(lang, "compareHint")}</p>
           {!dbUp && (
             <p className="muted">
               No hay conexion a base de datos. Revisa variables DB_* en la terminal del backend.
@@ -369,7 +363,7 @@ export default function CompareClient() {
             })}
           </div>
 
-          <p className="muted">Ejemplos</p>
+          <p className="muted">{t(lang, "compareExamples")}</p>
           <div className="chips-wrap">
             {exampleCountries.map((country) => (
               <button
@@ -388,7 +382,7 @@ export default function CompareClient() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar pais (ejemplo: C, Co, Cos...)"
+              placeholder={t(lang, "compareSearch")}
               disabled={!canAddMoreCountries}
             />
           </div>
@@ -406,17 +400,23 @@ export default function CompareClient() {
                 </button>
               ))}
               {filteredCountries.length === 0 && (
-                <p className="muted">Sin coincidencias para {search}.</p>
+                <p className="muted">
+                  {lang === "en" ? `No matches for ${search}.` : `Sin coincidencias para ${search}.`}
+                </p>
               )}
             </div>
           )}
           {!canAddMoreCountries && (
-            <p className="muted">Ya tienes 5 paises seleccionados. Quita uno para agregar otro.</p>
+            <p className="muted">
+              {lang === "en"
+                ? "You already selected 5 countries. Remove one to add another."
+                : "Ya tienes 5 paises seleccionados. Quita uno para agregar otro."}
+            </p>
           )}
-          <small className="muted">Maximo 5 paises</small>
+          <small className="muted">{lang === "en" ? "Maximum 5 countries" : "Maximo 5 paises"}</small>
 
           {selectedIso.length < 2 && (
-            <p className="muted">Selecciona al menos 2 paises para comparar.</p>
+            <p className="muted">{t(lang, "compareRunHint")}</p>
           )}
           {error && <p className="muted">Error: {error}</p>}
 
@@ -432,10 +432,10 @@ export default function CompareClient() {
                             type="button"
                             className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("country_name")}
-                            data-tooltip={sortHint("country_name", "Pais")}
-                            aria-label={sortHint("country_name", "Pais")}
+                            data-tooltip={sortHint("country_name", "Pais", "Country")}
+                            aria-label={sortHint("country_name", "Pais", "Country")}
                           >
-                            Pais {sortMarker("country_name")}
+                            {lang === "en" ? "Country" : "Pais"} {sortMarker("country_name")}
                           </button>
                         </th>
                         <th>
@@ -449,10 +449,10 @@ export default function CompareClient() {
                             type="button"
                             className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("deposits")}
-                            data-tooltip={sortHint("deposits", "Depositos")}
-                            aria-label={sortHint("deposits", "Depositos")}
+                            data-tooltip={sortHint("deposits", "Depositos", "Deposits")}
+                            aria-label={sortHint("deposits", "Depositos", "Deposits")}
                           >
-                            Depositos{" "}
+                            {lang === "en" ? "Deposits" : "Depositos"}{" "}
                             <AcronymHint
                               short="Dep/PIB"
                               full="Relacion entre depositos registrados y tamano economico del pais. Permite comparar intensidad relativa y no volumen absoluto."
@@ -465,8 +465,8 @@ export default function CompareClient() {
                             type="button"
                             className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("gdp")}
-                            data-tooltip={sortHint("gdp", "PIB")}
-                            aria-label={sortHint("gdp", "PIB")}
+                            data-tooltip={sortHint("gdp", "PIB", "GDP")}
+                            aria-label={sortHint("gdp", "PIB", "GDP")}
                           >
                             <AcronymHint
                               short="PIB"
@@ -480,8 +480,8 @@ export default function CompareClient() {
                             type="button"
                             className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("cpi")}
-                            data-tooltip={sortHint("cpi", "IPC")}
-                            aria-label={sortHint("cpi", "IPC")}
+                            data-tooltip={sortHint("cpi", "IPC", "CPI")}
+                            aria-label={sortHint("cpi", "IPC", "CPI")}
                           >
                             <AcronymHint
                               short="IPC"
@@ -495,8 +495,8 @@ export default function CompareClient() {
                             type="button"
                             className="table-sort-btn acronym-hint"
                             onClick={() => toggleSort("fsi")}
-                            data-tooltip={sortHint("fsi", "EFI")}
-                            aria-label={sortHint("fsi", "EFI")}
+                            data-tooltip={sortHint("fsi", "EFI", "FSI")}
+                            aria-label={sortHint("fsi", "EFI", "FSI")}
                           >
                             <AcronymHint
                               short="EFI"
@@ -556,7 +556,10 @@ export default function CompareClient() {
                       <XAxis dataKey="iso3" stroke="#a8bfd8" />
                       <YAxis stroke="#a8bfd8" tickFormatter={(value) => formatBillions(value)} />
                       <Tooltip
-                        formatter={(value) => [`${formatBillions(value)} ${NUMERIC_FORMAT.gdpUnitLabel}`, "PIB"]}
+                        formatter={(value) => [
+                          `${formatBillions(value)} ${NUMERIC_FORMAT.gdpUnitLabel}`,
+                          lang === "en" ? "GDP" : "PIB",
+                        ]}
                       />
                       <Bar dataKey="gdpBillion" fill="#2e86ff" />
                     </BarChart>
@@ -564,7 +567,7 @@ export default function CompareClient() {
                 </div>
                 <div className="panel chart-panel">
                   <h3>
-                    Depositos por pais{" "}
+                    {lang === "en" ? "Deposits by country" : "Depositos por pais"}{" "}
                     <InfoHint text="Valores exactos disponibles al pasar el cursor sobre cada barra." />
                   </h3>
                   <ResponsiveContainer width="100%" height={140}>
@@ -572,7 +575,7 @@ export default function CompareClient() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a3e55" />
                       <XAxis dataKey="iso3" stroke="#a8bfd8" />
                       <YAxis stroke="#a8bfd8" tickFormatter={(value) => formatNumber(value)} />
-                      <Tooltip formatter={(value) => [formatNumber(value), "Depositos"]} />
+                      <Tooltip formatter={(value) => [formatNumber(value), lang === "en" ? "Deposits" : "Depositos"]} />
                       <Bar dataKey="deposits" fill="#42c6b8" />
                     </BarChart>
                   </ResponsiveContainer>

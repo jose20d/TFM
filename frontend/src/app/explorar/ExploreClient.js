@@ -1,21 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import dynamic from "next/dynamic";
+import AppHeader from "../../components/AppHeader";
+import { t, useLang, withLang } from "../../lib/i18n";
+const ExploreMap = dynamic(() => import("./ExploreMap"), { ssr: false });
 
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
-
-const DEFAULT_VIEW = [15, -20];
-const DEFAULT_ZOOM = 2;
 const DEFAULT_LIMIT = 500;
-const MAX_MAP_POINTS = 300;
+const RESULTS_PAGE_SIZE = 300;
 
 async function getJson(url) {
   const response = await fetch(url, { cache: "no-store" });
@@ -44,43 +36,12 @@ function InfoHint({ text, label }) {
   );
 }
 
-function MapAutoZoom({ rows, countryIso, loading }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (loading) return;
-    if (!countryIso) {
-      map.setView(DEFAULT_VIEW, DEFAULT_ZOOM, { animate: true });
-      return;
-    }
-    if (!rows.length) return;
-
-    // Use only rows that match the selected country ISO.
-    // This avoids blocking zoom when the result set includes sparse/null ISO rows.
-    const targetRows = rows.filter(
-      (item) => String(item.iso3 || "").toUpperCase() === countryIso,
-    );
-    if (!targetRows.length) return;
-
-    const points = targetRows
-      .map((item) => [Number(item.latitude), Number(item.longitude)])
-      .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
-    if (!points.length) return;
-
-    if (points.length === 1) {
-      map.setView(points[0], 6, { animate: true });
-      return;
-    }
-
-    const bounds = L.latLngBounds(points);
-    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 7, animate: true });
-  }, [map, rows, countryIso, loading]);
-
-  return null;
-}
-
 export default function ExploreClient() {
+  const lang = useLang();
+  const [isHydrated, setIsHydrated] = useState(false);
   const [countries, setCountries] = useState([]);
+  const [minerals, setMinerals] = useState([]);
+  const [maxLimit, setMaxLimit] = useState(DEFAULT_LIMIT);
   const [countryIsoInput, setCountryIsoInput] = useState("");
   const [mineralInput, setMineralInput] = useState("");
   const [limitInput, setLimitInput] = useState(DEFAULT_LIMIT);
@@ -89,55 +50,156 @@ export default function ExploreClient() {
     mineral: "",
     limit: DEFAULT_LIMIT,
   });
-  const [rows, setRows] = useState([]);
+  const [listRows, setListRows] = useState([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [page, setPage] = useState(0);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const queryUrl = useMemo(() => {
-    const qs = new URLSearchParams();
-    if (filters.countryIso) qs.set("country_iso3", filters.countryIso);
-    if (filters.mineral.trim()) qs.set("mineral", filters.mineral.trim());
-    qs.set("limit", String(filters.limit));
-    return `/api/backend/api/v1/explore/deposits?${qs.toString()}`;
-  }, [filters]);
+  const buildExploreParams = useMemo(
+    () => (currentFilters) => {
+      const qs = new URLSearchParams();
+      if (currentFilters.countryIso) qs.set("country_iso3", currentFilters.countryIso);
+      if (currentFilters.mineral.trim()) qs.set("mineral", currentFilters.mineral.trim());
+      return qs;
+    },
+    [],
+  );
 
   useEffect(() => {
-    getJson("/api/backend/api/v1/countries?limit=300")
-      .then((data) => setCountries(Array.isArray(data) ? data : []))
-      .catch(() => setCountries([]));
+    Promise.all([
+      getJson(withLang("/api/backend/api/v1/countries?limit=300", lang)),
+      getJson(withLang("/api/backend/api/v1/minerals?limit=1000", lang)),
+    ])
+      .then(([countriesData, mineralsData]) => {
+        setCountries(Array.isArray(countriesData) ? countriesData : []);
+        const options = Array.isArray(mineralsData)
+          ? mineralsData
+              .map((item) => ({
+                value: String(item.commod_source || item.commod || "").trim(),
+                label: String(item.commod || item.commod_source || "").trim(),
+              }))
+              .filter((item) => item.value)
+          : [];
+        setMinerals(options);
+      })
+      .catch(() => {
+        setCountries([]);
+        setMinerals([]);
+      });
+  }, [lang]);
+
+  useEffect(() => {
+    const qs = new URLSearchParams();
+    if (countryIsoInput) qs.set("country_iso3", countryIsoInput);
+    getJson(withLang(`/api/backend/api/v1/explore/limits?${qs.toString()}`, lang))
+      .then((limitsData) => {
+        const fetchedMax = Number(limitsData?.max_limit);
+        const normalizedMax = Number.isFinite(fetchedMax) && fetchedMax > 0 ? fetchedMax : DEFAULT_LIMIT;
+        setMaxLimit(normalizedMax);
+        setLimitInput(countryIsoInput ? Math.min(DEFAULT_LIMIT, normalizedMax) : DEFAULT_LIMIT);
+      })
+      .catch(() => {
+        setMaxLimit(DEFAULT_LIMIT);
+        setLimitInput(DEFAULT_LIMIT);
+      });
+  }, [countryIsoInput, lang]);
+
+  const limitOptions = useMemo(() => {
+    const max = Math.max(1, Number(maxLimit) || DEFAULT_LIMIT);
+    const values = [];
+    if (max <= 100) {
+      values.push(max);
+    } else if (max <= 500) {
+      values.push(100, Math.floor(max * 0.8), max);
+    } else if (max <= 5000) {
+      values.push(500, Math.floor(max * 0.6), max);
+    } else {
+      values.push(500, 5000, Math.floor(max * 0.25), Math.floor(max * 0.6), max);
+    }
+    return Array.from(new Set(values.filter((v) => v >= 1 && v <= max))).sort((a, b) => a - b);
+  }, [maxLimit]);
+
+  const maxOptionLabel = lang === "en" ? "Maximum" : "Maximo";
+
+  useEffect(() => {
+    setIsHydrated(true);
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
+    const qs = buildExploreParams(filters);
     setLoading(true);
-    setError("");
-    fetch(queryUrl, { cache: "no-store", signal: controller.signal })
+    fetch(withLang(`/api/backend/api/v1/explore/deposits-count?${qs.toString()}`, lang), {
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
       })
       .then((data) => {
-        setRows(Array.isArray(data) ? data : []);
+        const total = Number(data?.total) || 0;
+        setTotalRows(Math.min(total, Math.max(0, Number(filters.limit) || 0)));
       })
       .catch((err) => {
-        // Ignore abort errors when a newer request supersedes the previous one.
         if (err?.name === "AbortError") return;
-        setRows([]);
-        setError(err.message || "Error consultando datos");
+        setTotalRows(0);
+        setError(err.message || (lang === "en" ? "Error querying data" : "Error consultando datos"));
       })
-      .finally(() => {
-        setLoading(false);
-      });
+      .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [queryUrl]);
+  }, [filters, lang, buildExploreParams]);
 
-  const selectedCountryLabel =
-    countries.find((country) => country.iso3 === filters.countryIso)?.country_name || "Todos";
-  const mapRows = useMemo(() => rows.slice(0, MAX_MAP_POINTS), [rows]);
-  const hiddenMapRows = rows.length - mapRows.length;
+  useEffect(() => {
+    const controller = new AbortController();
+    const qs = buildExploreParams(filters);
+    const offset = page * RESULTS_PAGE_SIZE;
+    const remaining = Math.max(0, (Number(filters.limit) || 0) - offset);
+    if (remaining <= 0) {
+      setListRows([]);
+      setLoading(false);
+      return () => controller.abort();
+    }
+    const pageLimit = Math.min(RESULTS_PAGE_SIZE, remaining);
+    qs.set("limit", String(pageLimit));
+    qs.set("offset", String(offset));
+    setLoading(true);
+    fetch(withLang(`/api/backend/api/v1/explore/deposits?${qs.toString()}`, lang), {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((data) => {
+        setListRows(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        setListRows([]);
+        setError(err.message || (lang === "en" ? "Error querying data" : "Error consultando datos"));
+      })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [filters, page, lang, buildExploreParams]);
+
+  const selectedCountryLabel = countries.find((country) => country.iso3 === filters.countryIso)?.country_name || "Todos";
+  const mapRows = useMemo(() => listRows, [listRows]);
+  const renderedUntil = page * RESULTS_PAGE_SIZE + listRows.length;
+  const hiddenMapRows = Math.max(0, totalRows - renderedUntil);
+  const totalPages = Math.max(1, Math.ceil(totalRows / RESULTS_PAGE_SIZE));
+
+  useEffect(() => {
+    if (page > totalPages - 1) setPage(Math.max(0, totalPages - 1));
+  }, [page, totalPages]);
 
   function applyFilters(event) {
     event.preventDefault();
+    setLoading(true);
+    setError("");
+    setPage(0);
     setFilters({
       countryIso: countryIsoInput,
       mineral: mineralInput,
@@ -147,136 +209,129 @@ export default function ExploreClient() {
 
   return (
     <div className="page-shell">
-      <header className="nav">
-        <div className="brand">
-          <span className="brand-dot" />
-          <div>
-            <strong>GeoContext</strong>
-            <br />
-            <span>Plataforma Analitica</span>
-          </div>
-        </div>
-        <nav className="menu">
-          <Link href="/">Inicio</Link>
-          <Link href="/explorar">Explorar</Link>
-          <Link href="/comparar">Comparar</Link>
-          <Link href="/analisis">Analisis</Link>
-          <Link href="/terreno">Terreno</Link>
-          <Link href="/consultas">Consultas</Link>
-        </nav>
-      </header>
+      <AppHeader />
 
       <main className="container">
         <section className="panel">
-          <h2>Exploracion geoterritorial</h2>
-          <p className="muted">Filtra por pais, mineral y limite de puntos sobre el mapa.</p>
+          <h2>{t(lang, "exploreTitle")}</h2>
+          <p className="muted">{t(lang, "exploreHint")}</p>
           <form className="explore-filters" onSubmit={applyFilters}>
-            <select value={countryIsoInput} onChange={(e) => setCountryIsoInput(e.target.value)}>
-              <option value="">Todos los paises</option>
+            <select
+              value={countryIsoInput}
+              onChange={(e) => {
+                const nextIso = e.target.value;
+                setCountryIsoInput(nextIso);
+              }}
+            >
+              <option value="">{lang === "en" ? "All countries" : "Todos los paises"}</option>
               {countries.map((country) => (
                 <option key={`${country.country_name}-${country.iso3}`} value={country.iso3 || ""}>
                   {country.country_name} ({country.iso3 || "N/A"})
                 </option>
               ))}
             </select>
-            <input
+            <select
               value={mineralInput}
               onChange={(e) => setMineralInput(e.target.value)}
-              placeholder="Mineral (ejemplo: Copper, Gold)"
-            />
+            >
+              <option value="">{lang === "en" ? "All minerals" : "Todos los minerales"}</option>
+              {minerals.map((mineral) => (
+                <option key={`exp-min-${mineral.value}`} value={mineral.value}>
+                  {mineral.label}
+                </option>
+              ))}
+            </select>
             <select
               value={limitInput}
               onChange={(e) => setLimitInput(Number(e.target.value) || DEFAULT_LIMIT)}
               aria-label="Limite visual utilizado para mantener rendimiento y claridad del mapa."
             >
-              <option value={500}>500 puntos</option>
-              <option value={800}>800 puntos</option>
-              <option value={1200}>1,200 puntos</option>
+              {!isHydrated ? (
+                <option value={DEFAULT_LIMIT}>
+                  {lang === "en" ? `${formatNumber(DEFAULT_LIMIT)} points` : `${formatNumber(DEFAULT_LIMIT)} puntos`}
+                </option>
+              ) : (
+                limitOptions.map((value) => (
+                  <option key={`limit-${value}`} value={value}>
+                    {value === maxLimit
+                      ? `${maxOptionLabel} (${formatNumber(value)})`
+                      : lang === "en"
+                        ? `${formatNumber(value)} points`
+                        : `${formatNumber(value)} puntos`}
+                  </option>
+                ))
+              )}
             </select>
-            <button type="submit">Aplicar filtros</button>
+            <button type="submit">{t(lang, "exploreApply")}</button>
           </form>
-          {loading && <p className="muted">Cargando resultados...</p>}
+          {loading && <p className="muted">{lang === "en" ? "Loading results..." : "Cargando resultados..."}</p>}
 
           <div className="explore-kpis">
             <div className="summary-item">
-              <h3>Pais filtrado</h3>
+              <h3>{lang === "en" ? "Filtered country" : "Pais filtrado"}</h3>
               <p>{selectedCountryLabel}</p>
             </div>
             <div className="summary-item">
-              <h3>Mineral filtrado</h3>
-              <p>{filters.mineral.trim() || "Todos"}</p>
+              <h3>{lang === "en" ? "Filtered mineral" : "Mineral filtrado"}</h3>
+              <p>{filters.mineral.trim() || (lang === "en" ? "All" : "Todos")}</p>
             </div>
             <div className="summary-item">
-              <h3>Puntos cargados</h3>
-              <p>{formatNumber(rows.length)}</p>
+              <h3>{lang === "en" ? "Loaded points" : "Puntos cargados"}</h3>
+              <p>{formatNumber(totalRows)}</p>
             </div>
           </div>
           <p className="muted">
             <InfoHint
               label="Limite de puntos"
-              text="Limite visual utilizado para mantener rendimiento y claridad del mapa."
+              text={
+                lang === "en"
+                  ? "Visual limit used to keep map performance and readability."
+                  : "Limite visual utilizado para mantener rendimiento y claridad del mapa."
+              }
             />
           </p>
         </section>
 
         <section className="grid">
           <article className="panel">
-            <h2>Mapa de depositos</h2>
+            <h2>{t(lang, "exploreMap")}</h2>
+            {!filters.countryIso && (
+              <p className="muted">
+                {lang === "en"
+                  ? "Select a country to display map points."
+                  : "Selecciona un pais para mostrar puntos en el mapa."}
+              </p>
+            )}
             <div className="map-wrap">
-              <MapContainer
-                center={DEFAULT_VIEW}
-                zoom={DEFAULT_ZOOM}
-                scrollWheelZoom
-                preferCanvas
-                style={{ height: "100%", width: "100%" }}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                <MapAutoZoom rows={mapRows} countryIso={filters.countryIso} loading={loading} />
-                {mapRows.map((item) => (
-                  <CircleMarker
-                    key={item.dep_id}
-                    center={[Number(item.latitude), Number(item.longitude)]}
-                    radius={4}
-                    pathOptions={{ color: "#2e86ff", fillColor: "#42c6b8", fillOpacity: 0.75, weight: 1 }}
-                  >
-                    <Tooltip direction="top" offset={[0, -2]}>
-                      <strong>{item.name || "Deposito"}</strong>
-                      <br />
-                      Pais: {item.country_name} ({item.iso3 || "N/A"})
-                      <br />
-                      Minerales: {item.minerals || "N/A"}
-                      <br />
-                      Coordenadas: {formatNumber(item.latitude)}, {formatNumber(item.longitude)}
-                      <br />
-                      Fuente: MRDS
-                    </Tooltip>
-                  </CircleMarker>
-                ))}
-              </MapContainer>
+              <ExploreMap mapRows={mapRows} countryIso={filters.countryIso} loading={loading} lang={lang} />
             </div>
             {hiddenMapRows > 0 && (
               <p className="muted">
-                Se muestran {formatNumber(mapRows.length)} puntos en mapa para mantener rendimiento.{" "}
-                {formatNumber(hiddenMapRows)} quedan fuera de la visualizacion.
+                {lang === "en" ? "Showing " : "Mostrando "}
+                {formatNumber(mapRows.length)}{" "}
+                {lang === "en" ? "points from this page on the map. " : "puntos de esta pagina en el mapa. "}
+                {formatNumber(hiddenMapRows)}{" "}
+                {lang === "en" ? "remain on next pages." : "quedan para las siguientes paginas."}
               </p>
             )}
           </article>
 
           <article className="panel results-panel">
-            <h2>Resultados</h2>
-            {error && <p className="muted">Error: {error}</p>}
+            <h2>{t(lang, "exploreResults")}</h2>
+            {error && <p className="muted">{lang === "en" ? "Error" : "Error"}: {error}</p>}
             {!error && (
               <div className="results-scroll">
                 <ul className="countries-list">
-                  {rows.map((item) => (
+                  {listRows.map((item) => (
                     <li key={`row-${item.dep_id}`}>
                       <strong>{item.name || `Dep. ${item.dep_id}`}</strong> - {item.country_name} -{" "}
                       <span
                         className="acronym-hint"
-                        data-tooltip="Minerales asociados registrados en este deposito."
+                        data-tooltip={
+                          lang === "en"
+                            ? "Associated minerals recorded in this deposit."
+                            : "Minerales asociados registrados en este deposito."
+                        }
                         tabIndex={0}
                       >
                         {item.minerals || "N/A"}
@@ -287,9 +342,25 @@ export default function ExploreClient() {
               </div>
             )}
             {!error && (
-              <p className="muted">
-                Mostrando 20 visibles de {formatNumber(rows.length)} resultados. Desplaza para ver mas.
-              </p>
+              <>
+                <p className="muted">
+                  {lang === "en"
+                    ? `Showing ${formatNumber(listRows.length)} records (page ${page + 1} of ${formatNumber(totalPages)}), out of ${formatNumber(totalRows)} total.`
+                    : `Mostrando ${formatNumber(listRows.length)} registros (pagina ${page + 1} de ${formatNumber(totalPages)}), de ${formatNumber(totalRows)} totales.`}
+                </p>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button type="button" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page <= 0}>
+                    {lang === "en" ? "Previous" : "Anterior"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                  >
+                    {lang === "en" ? "Next" : "Siguiente"}
+                  </button>
+                </div>
+              </>
             )}
           </article>
         </section>

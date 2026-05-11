@@ -3,6 +3,9 @@ from __future__ import annotations
 """FastAPI application for the production-oriented web experience."""
 
 import json
+import re
+import time
+import unicodedata
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -57,6 +60,162 @@ def _fetch_all(sql: str, params: tuple | None = None) -> list[dict]:
             return [dict(zip(columns, row)) for row in rows]
 
 
+I18N_CACHE_TTL_SECONDS = 300
+_I18N_CACHE: dict[str, object] = {"loaded_at": 0.0, "rows": []}
+
+
+def _normalize_lang(lang: str | None) -> str:
+    value = (lang or "es").strip().lower()
+    return value if value in {"es", "en"} else "es"
+
+
+def _normalize_term(value: str | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _load_i18n_rows() -> list[dict]:
+    now = time.time()
+    loaded_at = float(_I18N_CACHE.get("loaded_at") or 0.0)
+    if now - loaded_at <= I18N_CACHE_TTL_SECONDS and _I18N_CACHE.get("rows"):
+        return list(_I18N_CACHE.get("rows") or [])
+    try:
+        rows = _fetch_all(
+            """
+            SELECT domain,
+                   source_value_norm,
+                   source_value_original,
+                   label_es,
+                   label_en
+            FROM i18n_term_materialized
+            """
+        )
+    except Exception:
+        # Keep API operational even before running ETL/schema refresh.
+        rows = []
+    _I18N_CACHE["loaded_at"] = now
+    _I18N_CACHE["rows"] = rows
+    return rows
+
+
+def _translate_term(domain: str, value: str | None, lang: str) -> str | None:
+    if value is None:
+        return None
+    norm = _normalize_term(value)
+    if not norm:
+        return value
+    target_lang = _normalize_lang(lang)
+    for row in _load_i18n_rows():
+        if row.get("domain") == domain and row.get("source_value_norm") == norm:
+            return row.get("label_es") if target_lang == "es" else row.get("label_en")
+    return value
+
+
+def _resolve_source_term(domain: str, value: str | None) -> str | None:
+    if value is None:
+        return None
+    norm = _normalize_term(value)
+    if not norm:
+        return value
+    for row in _load_i18n_rows():
+        if row.get("domain") != domain:
+            continue
+        if norm in {
+            _normalize_term(row.get("source_value_original")),
+            _normalize_term(row.get("label_es")),
+            _normalize_term(row.get("label_en")),
+        }:
+            return row.get("source_value_original")
+    return value
+
+
+def _localize_payload(payload, lang: str):
+    target_lang = _normalize_lang(lang)
+    if isinstance(payload, list):
+        return [_localize_payload(item, target_lang) for item in payload]
+    if isinstance(payload, dict):
+        localized = {}
+        for key, value in payload.items():
+            if (
+                key == "name"
+                and isinstance(value, str)
+                and "iso3" in payload
+                and "dep_id" not in payload
+            ):
+                localized[key] = _translate_term("country", value, target_lang)
+                continue
+            if key in {"country_name", "country"} and isinstance(value, str):
+                localized[key] = _translate_term("country", value, target_lang)
+                continue
+            if key in {"commod", "mineral", "coexistence_focus_mineral", "dominant_mineral", "top_mineral"} and isinstance(value, str):
+                localized[key] = _translate_term("mineral", value, target_lang)
+                continue
+            if key in {"status", "deposit_status", "dev_stat"} and isinstance(value, str):
+                localized[key] = _translate_term("deposit_status", value, target_lang)
+                continue
+            if key in {"owner_tp"} and isinstance(value, str):
+                localized[key] = _translate_term("ownership_type", value, target_lang)
+                continue
+            if key in {"material"} and isinstance(value, str):
+                localized[key] = _translate_term("material", value, target_lang)
+                continue
+            if key == "minerals" and isinstance(value, str):
+                parts = [part.strip() for part in value.split(",")]
+                localized[key] = ", ".join(
+                    [_translate_term("mineral", part, target_lang) or part for part in parts if part]
+                )
+                continue
+            if key in {"minerals", "common_endpoint_minerals"} and isinstance(value, list):
+                localized[key] = [
+                    _translate_term("mineral", item, target_lang) if isinstance(item, str) else item
+                    for item in value
+                ]
+                continue
+            localized[key] = _localize_payload(value, target_lang)
+        return localized
+    return payload
+
+
+def _sort_key_localized(value: str | None) -> str:
+    text = str(value or "").strip().lower()
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def _get_explore_max_limit(country_iso3: str | None = None) -> int:
+    iso3 = (country_iso3 or "").strip().upper()
+    if iso3:
+        row = _fetch_one(
+            """
+            SELECT COUNT(DISTINCT d.dep_id) AS max_limit
+            FROM mrds_deposit d
+            JOIN mrds_location l ON l.dep_id = d.dep_id
+            JOIN dim_country c ON c.country_id = l.country_id
+            WHERE d.latitude IS NOT NULL
+              AND d.longitude IS NOT NULL
+              AND c.iso3 = %s
+            """,
+            (iso3,),
+        )
+        return max(1, int(row.get("max_limit") or 0))
+
+    row = _fetch_one(
+        """
+        SELECT COALESCE(MAX(total_deposits), 500) AS max_limit
+        FROM (
+            SELECT c.iso3, COUNT(DISTINCT d.dep_id) AS total_deposits
+            FROM mrds_deposit d
+            JOIN mrds_location l ON l.dep_id = d.dep_id
+            JOIN dim_country c ON c.country_id = l.country_id
+            WHERE d.latitude IS NOT NULL
+              AND d.longitude IS NOT NULL
+              AND c.iso3 IS NOT NULL
+            GROUP BY c.iso3
+        ) t
+        """
+    )
+    return max(500, int(row.get("max_limit") or 500))
+
+
 @app.get("/", response_class=HTMLResponse)
 def web_index(request: Request) -> HTMLResponse:
     """Render the first dashboard page."""
@@ -74,6 +233,7 @@ def api_health() -> dict:
 def api_countries(
     q: str | None = Query(default=None, min_length=1),
     limit: int = Query(default=300, ge=1, le=500),
+    lang: str = Query(default="es"),
 ) -> list[dict]:
     """List countries for selectors (name + ISO3 + ISO2)."""
     like_q = f"%{(q or '').strip()}%"
@@ -92,7 +252,9 @@ def api_countries(
         ORDER BY c.country_name
         LIMIT %s
     """
-    return _fetch_all(sql, (q or "", like_q, like_q, like_q, limit))
+    localized = _localize_payload(_fetch_all(sql, (q or "", like_q, like_q, like_q, limit)), lang)
+    localized.sort(key=lambda item: _sort_key_localized(item.get("country_name")))
+    return localized
 
 
 @app.get("/api/v1/home/defaults")
@@ -131,7 +293,7 @@ def api_home_defaults() -> dict:
 
 
 @app.get("/api/v1/overview")
-def api_overview() -> dict:
+def api_overview(lang: str = Query(default="es")) -> dict:
     """Return global KPIs for the dashboard header."""
     sql = """
         WITH latest AS (
@@ -155,11 +317,11 @@ def api_overview() -> dict:
             (SELECT ROUND(AVG(value)::numeric, 2) FROM latest WHERE indicator_code = 'CPI') AS avg_cpi,
             (SELECT ROUND(AVG(value)::numeric, 2) FROM latest WHERE indicator_code = 'RANK') AS avg_fsi;
     """
-    return _fetch_one(sql)
+    return _localize_payload(_fetch_one(sql), lang)
 
 
 @app.get("/api/v1/top-countries")
-def api_top_countries(limit: int = Query(default=5, ge=1, le=25)) -> list[dict]:
+def api_top_countries(limit: int = Query(default=5, ge=1, le=25), lang: str = Query(default="es")) -> list[dict]:
     """Return countries sorted by number of mineral deposits."""
     sql = """
         SELECT c.country_name,
@@ -172,11 +334,11 @@ def api_top_countries(limit: int = Query(default=5, ge=1, le=25)) -> list[dict]:
         ORDER BY total_deposits DESC
         LIMIT %s
     """
-    return _fetch_all(sql, (limit,))
+    return _localize_payload(_fetch_all(sql, (limit,)), lang)
 
 
 @app.get("/api/v1/top-minerals")
-def api_top_minerals(limit: int = Query(default=5, ge=1, le=25)) -> list[dict]:
+def api_top_minerals(limit: int = Query(default=5, ge=1, le=25), lang: str = Query(default="es")) -> list[dict]:
     """Return most common minerals across deposits."""
     sql = """
         SELECT mc.commod,
@@ -187,11 +349,43 @@ def api_top_minerals(limit: int = Query(default=5, ge=1, le=25)) -> list[dict]:
         ORDER BY occurrences DESC
         LIMIT %s
     """
-    return _fetch_all(sql, (limit,))
+    return _localize_payload(_fetch_all(sql, (limit,)), lang)
+
+
+@app.get("/api/v1/minerals")
+def api_minerals(
+    q: str | None = Query(default=None, min_length=1),
+    limit: int = Query(default=1000, ge=1, le=5000),
+    lang: str = Query(default="es"),
+) -> list[dict]:
+    """Return distinct minerals for selectors (complete catalog, localized + sorted)."""
+    like_q = f"%{(q or '').strip()}%"
+    sql = """
+        WITH src AS (
+            SELECT LOWER(TRIM(mc.commod)) AS commod_norm,
+                   MIN(TRIM(mc.commod)) AS commod_source
+            FROM mrds_commodity mc
+            WHERE mc.commod IS NOT NULL
+              AND TRIM(mc.commod) <> ''
+            GROUP BY LOWER(TRIM(mc.commod))
+        )
+        SELECT src.commod_source,
+               src.commod_source AS commod
+        FROM src
+        WHERE (%s = '' OR LOWER(src.commod_source) LIKE LOWER(%s))
+        ORDER BY src.commod_source
+        LIMIT %s
+    """
+    localized = _localize_payload(_fetch_all(sql, (q or "", like_q, limit)), lang)
+    localized.sort(key=lambda item: _sort_key_localized(item.get("commod")))
+    return localized
 
 
 @app.get("/api/v1/deposits/map")
-def api_deposits_map(limit: int = Query(default=2000, ge=50, le=10000)) -> list[dict]:
+def api_deposits_map(
+    limit: int = Query(default=2000, ge=50, le=10000),
+    lang: str = Query(default="es"),
+) -> list[dict]:
     """Return map-friendly deposit points."""
     sql = """
         SELECT d.dep_id,
@@ -208,18 +402,23 @@ def api_deposits_map(limit: int = Query(default=2000, ge=50, le=10000)) -> list[
         ORDER BY d.dep_id
         LIMIT %s
     """
-    return _fetch_all(sql, (limit,))
+    return _localize_payload(_fetch_all(sql, (limit,)), lang)
 
 
 @app.get("/api/v1/explore/deposits")
 def api_explore_deposits(
     country_iso3: str | None = Query(default=None),
     mineral: str | None = Query(default=None),
-    limit: int = Query(default=2000, ge=50, le=10000),
+    limit: int = Query(default=500, ge=1, le=500000),
+    offset: int = Query(default=0, ge=0, le=1000000),
+    lang: str = Query(default="es"),
 ) -> list[dict]:
     """Return map points using dynamic country/mineral filters."""
     iso3 = (country_iso3 or "").strip().upper()
-    mineral_q = (mineral or "").strip()
+    if not iso3:
+        return []
+    mineral_q = (_resolve_source_term("mineral", mineral) or "").strip()
+    effective_limit = min(limit, _get_explore_max_limit(iso3))
     sql = """
         SELECT d.dep_id,
                d.name,
@@ -247,13 +446,52 @@ def api_explore_deposits(
                  LOWER(COALESCE(d.name, '')),
                  d.dep_id
         LIMIT %s
+        OFFSET %s
     """
     like_mineral = f"%{mineral_q}%"
-    return _fetch_all(sql, (iso3, iso3, mineral_q, like_mineral, limit))
+    return _localize_payload(_fetch_all(sql, (iso3, iso3, mineral_q, like_mineral, effective_limit, offset)), lang)
+
+
+@app.get("/api/v1/explore/limits")
+def api_explore_limits(country_iso3: str | None = Query(default=None)) -> dict:
+    """Return UI limits for explore views."""
+    iso3 = (country_iso3 or "").strip().upper()
+    max_limit = _get_explore_max_limit(iso3 if len(iso3) == 3 else None)
+    return {"default_limit": 500, "max_limit": max_limit}
+
+
+@app.get("/api/v1/explore/deposits-count")
+def api_explore_deposits_count(
+    country_iso3: str | None = Query(default=None),
+    mineral: str | None = Query(default=None),
+) -> dict:
+    """Return total deposits count for explore filters."""
+    iso3 = (country_iso3 or "").strip().upper()
+    if not iso3:
+        return {"total": 0}
+    mineral_q = (_resolve_source_term("mineral", mineral) or "").strip()
+    like_mineral = f"%{mineral_q}%"
+    sql = """
+        SELECT COUNT(DISTINCT d.dep_id) AS total
+        FROM mrds_deposit d
+        LEFT JOIN mrds_location l ON l.dep_id = d.dep_id
+        LEFT JOIN dim_country c ON c.country_id = l.country_id
+        WHERE d.latitude IS NOT NULL
+          AND d.longitude IS NOT NULL
+          AND (%s = '' OR c.iso3 = %s)
+          AND (%s = '' OR EXISTS (
+                SELECT 1
+                FROM mrds_commodity x
+                WHERE x.dep_id = d.dep_id
+                  AND LOWER(x.commod) LIKE LOWER(%s)
+          ))
+    """
+    row = _fetch_one(sql, (iso3, iso3, mineral_q, like_mineral))
+    return {"total": int(row.get("total") or 0)}
 
 
 @app.get("/api/v1/countries/{iso3}/summary")
-def api_country_summary(iso3: str) -> dict:
+def api_country_summary(iso3: str, lang: str = Query(default="es")) -> dict:
     """Return a country profile for dashboard detail cards."""
     normalized_iso3 = iso3.upper().strip()
     sql = """
@@ -297,11 +535,11 @@ def api_country_summary(iso3: str) -> dict:
     if not row:
         raise HTTPException(status_code=404, detail=f"Country with ISO3 '{normalized_iso3}' not found")
     row["top_minerals"] = row.get("top_minerals") or []
-    return row
+    return _localize_payload(row, lang)
 
 
 @app.get("/api/v1/analysis/country-overview")
-def api_analysis_country_overview() -> list[dict]:
+def api_analysis_country_overview(lang: str = Query(default="es")) -> list[dict]:
     """Return country-level metrics for global analysis charts."""
     sql = """
         WITH country_bucket AS (
@@ -342,11 +580,14 @@ def api_analysis_country_overview() -> list[dict]:
         LEFT JOIN deposits d ON d.iso3 = cb.iso3
         ORDER BY cb.country_name
     """
-    return _fetch_all(sql)
+    return _localize_payload(_fetch_all(sql), lang)
 
 
 @app.get("/api/v1/countries/compare")
-def api_countries_compare(iso3: list[str] = Query(default=["CRI", "CHL", "PER"])) -> list[dict]:
+def api_countries_compare(
+    iso3: list[str] = Query(default=["CRI", "CHL", "PER"]),
+    lang: str = Query(default="es"),
+) -> list[dict]:
     """Return comparable metrics for a small set of countries."""
     normalized = []
     seen: set[str] = set()
@@ -416,7 +657,7 @@ def api_countries_compare(iso3: list[str] = Query(default=["CRI", "CHL", "PER"])
         LEFT JOIN deposits d ON d.iso3 = cb.iso3
         ORDER BY cb.ord
     """
-    return _fetch_all(sql, (normalized,))
+    return _localize_payload(_fetch_all(sql, (normalized,)), lang)
 
 
 def _safe_geojson(value: str | None) -> dict:
@@ -436,6 +677,7 @@ def api_terrain_corridor(
     from_dep_id: int = Query(..., ge=1),
     to_dep_id: int = Query(..., ge=1),
     width_km: float = Query(default=2, ge=1, le=50),
+    lang: str = Query(default="es"),
 ) -> dict:
     """Analyze deposits and minerals inside a corridor between two endpoints."""
     iso3 = (country_iso3 or "").strip().upper()
@@ -691,7 +933,7 @@ def api_terrain_corridor(
     to_minerals = set(to_deposit.get("minerals") or [])
     common_endpoint_minerals = sorted(from_minerals.intersection(to_minerals))
 
-    return {
+    payload = {
         "country": {"iso3": iso3, "name": country_name},
         "from": from_deposit,
         "to": to_deposit,
@@ -704,6 +946,7 @@ def api_terrain_corridor(
         "line_geojson": line_geojson,
         "corridor_geojson": corridor_geojson,
     }
+    return _localize_payload(payload, lang)
 
 
 @app.get("/api/v1/terrain/zone-interest")
@@ -712,6 +955,7 @@ def api_terrain_zone_interest(
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     radius_km: float = Query(default=10, ge=1, le=50),
+    lang: str = Query(default="es"),
 ) -> dict:
     """Analyze deposits and minerals around a map-selected center point."""
     iso3 = (country_iso3 or "").strip().upper()
@@ -875,7 +1119,7 @@ def api_terrain_zone_interest(
     }
     if deposit_count == 0:
         response["message"] = "No se encontraron depositos registrados dentro del radio seleccionado."
-    return response
+    return _localize_payload(response, lang)
 
 
 @app.get("/api/v1/terrain/frequent-minerals")
@@ -884,6 +1128,7 @@ def api_terrain_frequent_minerals(
     mineral: str | None = Query(default=None),
     limit: int = Query(default=20),
     show_all: bool = Query(default=False),
+    lang: str = Query(default="es"),
 ) -> dict:
     """Return mineral frequency and spatial concentration for a selected country."""
     iso3 = (country_iso3 or "").strip().upper()
@@ -891,7 +1136,7 @@ def api_terrain_frequent_minerals(
         raise HTTPException(status_code=400, detail="country_iso3 must be a valid ISO3 code.")
     if limit not in {10, 20, 50}:
         raise HTTPException(status_code=400, detail="limit must be one of: 10, 20, 50.")
-    selected_mineral = (mineral or "").strip()
+    selected_mineral = (_resolve_source_term("mineral", mineral) or "").strip()
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -940,7 +1185,7 @@ def api_terrain_frequent_minerals(
             deposit_rows = cur.fetchall()
 
             if not deposit_rows:
-                return {
+                return _localize_payload({
                     "country": {"iso3": iso3, "name": country_name},
                     "selected_mineral": selected_mineral or None,
                     "total_deposits": 0,
@@ -952,7 +1197,7 @@ def api_terrain_frequent_minerals(
                     "available_minerals": [],
                     "points_geojson": {},
                     "message": "No se encontraron minerales asociados para esta seleccion.",
-                }
+                }, lang)
 
             dep_ids = [int(row[0]) for row in deposit_rows]
             dep_ids_set = set(dep_ids)
@@ -1112,7 +1357,7 @@ def api_terrain_frequent_minerals(
             }
         )
 
-    return {
+    return _localize_payload({
         "country": {"iso3": iso3, "name": country_name},
         "selected_mineral": selected_mineral or None,
         "total_deposits": total_deposits,
@@ -1123,7 +1368,7 @@ def api_terrain_frequent_minerals(
         "coexistence": coexistence,
         "available_minerals": available_sorted,
         "points_geojson": points_geojson,
-    }
+    }, lang)
 
 
 @app.get("/api/v1/terrain/exploratory-potential")
@@ -1131,12 +1376,13 @@ def api_terrain_exploratory_potential(
     country_iso3: str = Query(...),
     mineral: str = Query(...),
     intensity_level: str = Query(default="medium"),
+    lang: str = Query(default="es"),
 ) -> dict:
     """Return exploratory spatial concentration patterns for a selected mineral."""
     iso3 = (country_iso3 or "").strip().upper()
     if len(iso3) != 3:
         raise HTTPException(status_code=400, detail="country_iso3 must be a valid ISO3 code.")
-    mineral_target = (mineral or "").strip()
+    mineral_target = (_resolve_source_term("mineral", mineral) or "").strip()
     if not mineral_target:
         raise HTTPException(status_code=400, detail="mineral is required.")
     level = (intensity_level or "medium").strip().lower()
@@ -1207,7 +1453,7 @@ def api_terrain_exploratory_potential(
             deposit_rows = cur.fetchall()
 
             if len(deposit_rows) < 2:
-                return {
+                return _localize_payload({
                     "country": {"iso3": iso3, "name": country_name},
                     "mineral": mineral_target,
                     "intensity_level": level,
@@ -1220,7 +1466,7 @@ def api_terrain_exploratory_potential(
                     "top_regions": [],
                     "points_geojson": {},
                     "message": "No se encontraron suficientes registros para identificar patrones espaciales.",
-                }
+                }, lang)
 
             cur.execute(
                 """
@@ -1455,7 +1701,7 @@ def api_terrain_exploratory_potential(
         for region, dep_count in top_region_rows
     ]
 
-    return {
+    return _localize_payload({
         "country": {"iso3": iso3, "name": country_name},
         "mineral": mineral_target,
         "intensity_level": level,
@@ -1474,7 +1720,7 @@ def api_terrain_exploratory_potential(
             "Las zonas resaltadas representan concentraciones espaciales de registros mineralogicos "
             "asociados al mineral seleccionado."
         ),
-    }
+    }, lang)
 
 
 @app.get("/api/v1/queries/deposits-by-mineral")
@@ -1484,10 +1730,11 @@ def api_queries_deposits_by_mineral(
     deposit_status: str | None = Query(default=None),
     min_minerals: int = Query(default=1, ge=1, le=20),
     limit: int = Query(default=100, ge=1, le=1000),
+    lang: str = Query(default="es"),
 ) -> dict:
     """Guided query: deposits filtered by mineral and simple attributes."""
     iso3 = (country_iso3 or "").strip().upper()
-    mineral_q = (mineral or "").strip()
+    mineral_q = (_resolve_source_term("mineral", mineral) or "").strip()
     status_q = (deposit_status or "").strip()
 
     sql = """
@@ -1548,7 +1795,7 @@ def api_queries_deposits_by_mineral(
             }
         )
 
-    return {
+    return _localize_payload({
         "mode": "deposits_by_mineral",
         "result_count": len(results),
         "summary": (
@@ -1557,7 +1804,7 @@ def api_queries_deposits_by_mineral(
             else "No se encontraron registros para los criterios seleccionados."
         ),
         "rows": results,
-    }
+    }, lang)
 
 
 @app.get("/api/v1/queries/combined-minerals")
@@ -1567,12 +1814,13 @@ def api_queries_combined_minerals(
     mineral_b: str = Query(..., min_length=1),
     exclude_mineral: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
+    lang: str = Query(default="es"),
 ) -> dict:
     """Guided query: deposits where two minerals coexist."""
     iso3 = (country_iso3 or "").strip().upper()
-    mineral_a_q = (mineral_a or "").strip()
-    mineral_b_q = (mineral_b or "").strip()
-    exclude_q = (exclude_mineral or "").strip()
+    mineral_a_q = (_resolve_source_term("mineral", mineral_a) or "").strip()
+    mineral_b_q = (_resolve_source_term("mineral", mineral_b) or "").strip()
+    exclude_q = (_resolve_source_term("mineral", exclude_mineral) or "").strip()
     if not mineral_a_q or not mineral_b_q:
         raise HTTPException(status_code=400, detail="mineral_a and mineral_b are required.")
 
@@ -1637,7 +1885,7 @@ def api_queries_combined_minerals(
         for row in rows
     ]
 
-    return {
+    return _localize_payload({
         "mode": "combined_minerals",
         "result_count": total,
         "summary": (
@@ -1651,7 +1899,7 @@ def api_queries_combined_minerals(
             "excluded": exclude_q or None,
         },
         "rows": results,
-    }
+    }, lang)
 
 
 @app.get("/api/v1/queries/spatial-nearby")
@@ -1661,10 +1909,11 @@ def api_queries_spatial_nearby(
     radius_km: float = Query(default=20, ge=1, le=200),
     mineral: str | None = Query(default=None),
     limit: int = Query(default=150, ge=1, le=1000),
+    lang: str = Query(default="es"),
 ) -> dict:
     """Guided query: nearby deposits using PostGIS proximity."""
     iso3 = (country_iso3 or "").strip().upper()
-    mineral_q = (mineral or "").strip()
+    mineral_q = (_resolve_source_term("mineral", mineral) or "").strip()
     radius_m = float(radius_km) * 1000.0
 
     with get_connection() as conn:
@@ -1776,7 +2025,7 @@ def api_queries_spatial_nearby(
         for row in nearby_rows
     ]
 
-    return {
+    return _localize_payload({
         "mode": "spatial_nearby",
         "base_deposit": base_dep,
         "radius_km": round(float(radius_km), 2),
@@ -1787,7 +2036,7 @@ def api_queries_spatial_nearby(
             else "No se encontraron registros para los criterios seleccionados."
         ),
         "rows": rows,
-    }
+    }, lang)
 
 
 @app.get("/api/v1/queries/country-profile")
@@ -1800,6 +2049,7 @@ def api_queries_country_profile(
     fsi_min: float | None = Query(default=None),
     fsi_max: float | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
+    lang: str = Query(default="es"),
 ) -> dict:
     """Guided query: filter country profiles by combined indicators."""
     sql = """
@@ -1892,7 +2142,7 @@ def api_queries_country_profile(
             }
         )
 
-    return {
+    return _localize_payload({
         "mode": "country_profile",
         "result_count": len(results),
         "summary": (
@@ -1901,7 +2151,7 @@ def api_queries_country_profile(
             else "No se encontraron registros para los criterios seleccionados."
         ),
         "rows": results,
-    }
+    }, lang)
 
 
 @app.get("/api/v1/queries/country-profile/bounds")
