@@ -144,7 +144,7 @@ export default function ConsultasClient() {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       }),
-      fetch(withLang("/api/backend/api/v1/top-minerals?limit=25", lang), { cache: "no-store" }).then((r) => {
+      fetch(withLang("/api/backend/api/v1/minerals?limit=1000", lang), { cache: "no-store" }).then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       }),
@@ -152,7 +152,12 @@ export default function ConsultasClient() {
       .then(([countriesPayload, mineralsPayload]) => {
         setCountries(Array.isArray(countriesPayload) ? countriesPayload : []);
         const mineralOptions = Array.isArray(mineralsPayload)
-          ? mineralsPayload.map((item) => String(item.commod || "").trim()).filter(Boolean)
+          ? mineralsPayload
+              .map((item) => ({
+                value: String(item.commod_source || item.commod || "").trim(),
+                label: String(item.commod || item.commod_source || "").trim(),
+              }))
+              .filter((item) => item.value)
           : [];
         setMinerals(mineralOptions);
       })
@@ -188,7 +193,7 @@ export default function ConsultasClient() {
         const options = Array.isArray(rows)
           ? rows.map((row) => ({
               dep_id: Number(row.dep_id),
-              name: row.name || `Deposito ${row.dep_id}`,
+              name: row.name || (lang === "en" ? `Deposit ${row.dep_id}` : `Deposito ${row.dep_id}`),
               latitude: Number(row.latitude),
               longitude: Number(row.longitude),
             }))
@@ -394,8 +399,8 @@ export default function ConsultasClient() {
             >
               <option value="">{tr("Todos", "All")}</option>
               {minerals.map((mineral) => (
-                <option key={`dep-min-${mineral}`} value={mineral}>
-                  {mineral}
+                <option key={`dep-min-${mineral.value}`} value={mineral.value}>
+                  {mineral.label}
                 </option>
               ))}
             </select>
@@ -407,10 +412,10 @@ export default function ConsultasClient() {
               onChange={(e) => setDepositFilters((p) => ({ ...p, status: e.target.value }))}
             >
               <option value="">{tr("Todos", "All")}</option>
-              <option value="producer">Producer</option>
-              <option value="prospect">Prospect</option>
-              <option value="occurrence">Occurrence</option>
-              <option value="past producer">Past Producer</option>
+              <option value="producer">{tr("Productor", "Producer")}</option>
+              <option value="prospect">{tr("Prospecto", "Prospect")}</option>
+              <option value="occurrence">{tr("Ocurrencia", "Occurrence")}</option>
+              <option value="past producer">{tr("Productor historico", "Past Producer")}</option>
             </select>
           </label>
           <label className={styles.fieldMin}>
@@ -426,7 +431,7 @@ export default function ConsultasClient() {
             />
           </label>
           <label className={styles.fieldLimit}>
-            {tr("Result limit", "Result limit")}
+            {tr("Limite de resultados", "Result limit")}
             <input
               type="number"
               min={1}
@@ -466,8 +471,8 @@ export default function ConsultasClient() {
             >
               <option value="">{tr("Seleccionar", "Select")}</option>
               {minerals.map((mineral) => (
-                <option key={`comb-a-${mineral}`} value={mineral}>
-                  {mineral}
+                <option key={`comb-a-${mineral.value}`} value={mineral.value}>
+                  {mineral.label}
                 </option>
               ))}
             </select>
@@ -480,8 +485,8 @@ export default function ConsultasClient() {
             >
               <option value="">{tr("Seleccionar", "Select")}</option>
               {minerals.map((mineral) => (
-                <option key={`comb-b-${mineral}`} value={mineral}>
-                  {mineral}
+                <option key={`comb-b-${mineral.value}`} value={mineral.value}>
+                  {mineral.label}
                 </option>
               ))}
             </select>
@@ -494,8 +499,8 @@ export default function ConsultasClient() {
             >
               <option value="">{tr("Todos", "All")}</option>
               {minerals.map((mineral) => (
-                <option key={`comb-ex-${mineral}`} value={mineral}>
-                  {mineral}
+                <option key={`comb-ex-${mineral.value}`} value={mineral.value}>
+                  {mineral.label}
                 </option>
               ))}
             </select>
@@ -569,9 +574,12 @@ export default function ConsultasClient() {
               onChange={(e) => setSpatialFilters((p) => ({ ...p, mineral: e.target.value }))}
             >
               <option value="">{tr("Todos", "All")}</option>
-              {(spatialMinerals.length ? spatialMinerals : minerals).map((mineral) => (
-                <option key={`spatial-min-${mineral}`} value={mineral}>
-                  {mineral}
+              {(spatialMinerals.length
+                ? spatialMinerals.map((mineral) => ({ value: mineral, label: mineral }))
+                : minerals
+              ).map((mineral, idx) => (
+                <option key={`spatial-min-${mineral.value}-${idx}`} value={mineral.value}>
+                  {mineral.label}
                 </option>
               ))}
             </select>
@@ -787,7 +795,10 @@ export default function ConsultasClient() {
             {t(lang, "queriesHint")}
           </p>
           <p className="muted">
-            Construye busquedas usando filtros simples sin necesidad de conocimientos tecnicos.
+            {tr(
+              "Construye busquedas usando filtros simples sin necesidad de conocimientos tecnicos.",
+              "Build searches using simple filters without requiring technical knowledge.",
+            )}
           </p>
         </section>
 
@@ -814,7 +825,12 @@ export default function ConsultasClient() {
           <h3>
             {modeLabel(activeMode)}{" "}
             {activeMode === "spatial" && (
-              <InfoHint text="Busqueda basada en proximidad geografica usando registros georreferenciados." />
+              <InfoHint
+                text={tr(
+                  "Busqueda basada en proximidad geografica usando registros georreferenciados.",
+                  "Search based on geographic proximity using georeferenced records.",
+                )}
+              />
             )}
           </h3>
           <p className={`muted ${styles.helpText}`}>
@@ -878,12 +894,6 @@ export default function ConsultasClient() {
           </p>
         </section>
       </main>
-
-      <datalist id="consultas-minerals">
-        {minerals.map((mineral) => (
-          <option key={`m-${mineral}`} value={mineral} />
-        ))}
-      </datalist>
     </div>
   );
 }
