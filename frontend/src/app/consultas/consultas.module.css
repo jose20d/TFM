@@ -35,42 +35,24 @@
 
 .filtersGridDeposits {
   display: grid;
-  grid-template-columns:
-    minmax(170px, 1.08fr)
-    minmax(185px, 0.9fr)
-    minmax(170px, 0.82fr)
-    minmax(190px, 1.06fr)
-    minmax(135px, 0.66fr);
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
   gap: 0.85rem 1rem;
   margin-top: 0.7rem;
+  align-items: end;
 }
 
 .filtersGridCombined {
   display: grid;
-  grid-template-columns:
-    minmax(220px, 1.2fr)
-    minmax(16px, 0.35fr)
-    minmax(180px, 1fr)
-    minmax(180px, 1fr)
-    minmax(220px, 1.25fr)
-    minmax(105px, 120px);
-  gap: 0.85rem 1.1rem;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 0.85rem 1rem;
   margin-top: 0.7rem;
   align-items: end;
 }
 
 .filtersGridSpatial {
   display: grid;
-  grid-template-columns:
-    minmax(190px, 1fr)
-    18px
-    minmax(230px, 1.2fr)
-    16px
-    minmax(170px, 0.95fr)
-    minmax(190px, 1fr)
-    18px
-    minmax(130px, 150px);
-  gap: 0.85rem 0.65rem;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 0.85rem 1rem;
   margin-top: 0.7rem;
   align-items: end;
 }
@@ -104,79 +86,15 @@
   gap: 0.35rem;
 }
 
-.fieldCountry {
-  justify-self: stretch;
+.filtersGridDeposits > label,
+.filtersGridCombined > label,
+.filtersGridSpatial > label {
+  min-width: 0;
 }
 
-.fieldMineral {
-  justify-self: end;
-  width: 94%;
-}
-
-.fieldStatus {
-  justify-self: start;
-  width: 94%;
-  transform: translateX(40px);
-}
-
-.fieldMin {
-  justify-self: stretch;
-  width: 90%;
-  transform: translateX(30px);
-}
-
-.fieldLimit {
-  justify-self: stretch;
-}
-
-.fieldCombinedCountry { grid-column: 1; }
-.fieldCombinedA { grid-column: 3; }
-.fieldCombinedA { transform: translateX(-60px); }
-.fieldCombinedB { grid-column: 4; }
-.fieldCombinedB { transform: translateX(-30px); }
-.fieldCombinedExclude { grid-column: 5; }
-
-.fieldCombinedLimit {
-  grid-column: 6;
-  width: 100%;
-  min-width: 95px;
-  justify-self: end;
-}
-
-.fieldSpatialCountry {
-  grid-column: 1;
-  width: 100%;
-  justify-self: stretch;
-}
-.fieldSpatialBase {
-  grid-column: 3;
-  justify-self: stretch;
-  width: 100%;
-  transform: translateX(50px);
-}
-.fieldSpatialBase select {
-  width: 100%;
-  transform: none;
-}
-.fieldSpatialRadius {
-  grid-column: 5;
-  justify-self: stretch;
-  width: 100%;
-  transform: translateX(55px);
-}
-.fieldSpatialMineral { grid-column: 6; }
-.fieldSpatialLimit {
-  grid-column: 8;
-  width: 78%;
-  min-width: 98px;
-  justify-self: end;
-  margin-left: 0;
-}
-.fieldSpatialMineral {
-  justify-self: stretch;
-  width: 100%;
-  margin-left: 0;
-  transform: translateX(60px);
+.fieldSpatialRadius span {
+  color: rgba(171, 196, 220, 0.88);
+  font-size: 0.78rem;
 }
 
 .filtersGrid select,
@@ -193,6 +111,8 @@
   color: #e9f5ff;
   padding: 0.55rem 0.65rem;
   min-height: 36px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .filtersGrid input::placeholder,
@@ -319,17 +239,26 @@
   }
 
   .filtersGridDeposits {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
 
   .filtersGridCombined {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
 
   .filtersGridSpatial {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
 
+  .filtersGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .filtersGridDeposits,
+  .filtersGridCombined,
+  .filtersGridSpatial,
   .filtersGrid {
     grid-template-columns: 1fr;
   }

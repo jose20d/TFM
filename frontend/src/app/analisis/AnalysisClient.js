@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppHeader from "../../components/AppHeader";
 import { t, useLang, withLang } from "../../lib/i18n";
 import {
@@ -15,12 +15,12 @@ import {
 } from "recharts";
 import styles from "./analysis.module.css";
 
-const CPI_GROUPS = [
-  { id: "high", label: "Alta corrupcion percibida (CPI < 30)", color: "#d9534f" },
-  { id: "mid", label: "Nivel medio (30 <= CPI < 60)", color: "#f0ad4e" },
-  { id: "low", label: "Baja corrupcion percibida (CPI >= 60)", color: "#2dcf84" },
-  { id: "unknown", label: "Sin CPI", color: "#7c8da5" },
-];
+const CPI_COLORS = Object.freeze({
+  high: "#d9534f",
+  mid: "#f0ad4e",
+  low: "#2dcf84",
+  unknown: "#7c8da5",
+});
 
 function toNumeric(value) {
   const numeric = Number(value);
@@ -103,6 +103,7 @@ async function getJson(url) {
 
 export default function AnalysisClient() {
   const lang = useLang();
+  const tr = useCallback((es, en) => (lang === "en" ? en : es), [lang]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -124,10 +125,10 @@ export default function AnalysisClient() {
       .catch((err) => {
         setRows([]);
         setDbUp(false);
-        setError(err.message || (lang === "en" ? "Could not load analysis." : "No fue posible cargar el analisis."));
+        setError(err.message || tr("No fue posible cargar el analisis.", "Could not load analysis."));
       })
       .finally(() => setLoading(false));
-  }, [lang]);
+  }, [lang, tr]);
 
   const normalizedRows = useMemo(
     () =>
@@ -180,6 +181,15 @@ export default function AnalysisClient() {
 
   const gdpByCategory = useMemo(() => groupByCategory(gdpScatterRows), [gdpScatterRows]);
   const fsiByCategory = useMemo(() => groupByCategory(fsiScatterRows), [fsiScatterRows]);
+  const cpiGroups = useMemo(
+    () => [
+      { id: "high", label: tr("Alta corrupcion percibida (CPI < 30)", "High perceived corruption (CPI < 30)"), color: CPI_COLORS.high },
+      { id: "mid", label: tr("Nivel medio (30 <= CPI < 60)", "Medium level (30 <= CPI < 60)"), color: CPI_COLORS.mid },
+      { id: "low", label: tr("Baja corrupcion percibida (CPI >= 60)", "Low perceived corruption (CPI >= 60)"), color: CPI_COLORS.low },
+      { id: "unknown", label: tr("Sin CPI", "No CPI"), color: CPI_COLORS.unknown },
+    ],
+    [tr],
+  );
 
   return (
     <div className="page-shell">
@@ -193,7 +203,7 @@ export default function AnalysisClient() {
           </p>
           <div className={styles.filters}>
             <label>
-              {lang === "en" ? "Minimum deposits" : "Minimo de depositos"}
+              {tr("Minimo de depositos", "Minimum deposits")}
               <input
                 type="number"
                 min={0}
@@ -202,29 +212,32 @@ export default function AnalysisClient() {
               />
             </label>
             <label>
-              {lang === "en" ? "CPI Category" : "Categoria CPI"}
+              {tr("Categoria CPI", "CPI Category")}
               <select value={cpiFilter} onChange={(event) => setCpiFilter(event.target.value)}>
-                <option value="all">{lang === "en" ? "All" : "Todas"}</option>
+                <option value="all">{tr("Todas", "All")}</option>
                 <option value="high">
-                  {lang === "en" ? "High perceived corruption (CPI < 30)" : "Alta corrupcion percibida (CPI < 30)"}
+                  {tr("Alta corrupcion percibida (CPI < 30)", "High perceived corruption (CPI < 30)")}
                 </option>
-                <option value="mid">{lang === "en" ? "Medium level (30 - 59)" : "Nivel medio (30 - 59)"}</option>
+                <option value="mid">{tr("Nivel medio (30 - 59)", "Medium level (30 - 59)")}</option>
                 <option value="low">
-                  {lang === "en" ? "Low perceived corruption (CPI >= 60)" : "Baja corrupcion percibida (CPI >= 60)"}
+                  {tr("Baja corrupcion percibida (CPI >= 60)", "Low perceived corruption (CPI >= 60)")}
                 </option>
               </select>
             </label>
             <p className="muted">
-              {lang === "en" ? "Filtered countries" : "Paises filtrados"}:{" "}
+              {tr("Paises filtrados", "Filtered countries")}:{" "}
               <strong>{formatNumber(filteredRows.length)}</strong>
             </p>
           </div>
           {!dbUp && (
             <p className="muted">
-              No hay conexion a base de datos. Revisa variables DB_* en la terminal del backend.
+              {tr(
+                "No hay conexion a base de datos. Revisa variables DB_* en la terminal del backend.",
+                "No database connection. Check DB_* variables in the backend terminal.",
+              )}
             </p>
           )}
-          {error && <p className="muted">Error: {error}</p>}
+          {error && <p className="muted">{tr("Error", "Error")}: {error}</p>}
         </section>
 
         <section className={styles.chartsGrid}>
@@ -248,7 +261,7 @@ export default function AnalysisClient() {
                   <XAxis
                     type="number"
                     dataKey="gdpB"
-                    name="PIB (USD B)"
+                    name={tr("PIB (USD B)", "GDP (USD B)")}
                     scale="log"
                     domain={["auto", "auto"]}
                     stroke="#a8bfd8"
@@ -257,7 +270,7 @@ export default function AnalysisClient() {
                   <YAxis
                     type="number"
                     dataKey="total_deposits"
-                    name="Depositos"
+                    name={tr("Depositos", "Deposits")}
                     scale="log"
                     domain={["auto", "auto"]}
                     stroke="#a8bfd8"
@@ -265,7 +278,7 @@ export default function AnalysisClient() {
                   />
                   <Tooltip content={<AnalysisTooltip mode="gdp" lang={lang} />} />
                   <Legend wrapperStyle={{ color: "#dbe9f8" }} />
-                  {CPI_GROUPS.map((group) => (
+                  {cpiGroups.map((group) => (
                     <Scatter
                       key={`gdp-${group.id}`}
                       name={group.label}
@@ -317,7 +330,7 @@ export default function AnalysisClient() {
                   <YAxis
                     type="number"
                     dataKey="total_deposits"
-                    name="Depositos"
+                    name={tr("Depositos", "Deposits")}
                     scale="log"
                     domain={["auto", "auto"]}
                     stroke="#a8bfd8"
@@ -325,7 +338,7 @@ export default function AnalysisClient() {
                   />
                   <Tooltip content={<AnalysisTooltip mode="fsi" lang={lang} />} />
                   <Legend wrapperStyle={{ color: "#dbe9f8" }} />
-                  {CPI_GROUPS.map((group) => (
+                  {cpiGroups.map((group) => (
                     <Scatter
                       key={`fsi-${group.id}`}
                       name={group.label}
