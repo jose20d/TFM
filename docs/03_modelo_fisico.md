@@ -154,3 +154,15 @@ El modelo físico respeta la estructura definida en el modelo lógico:
 - No se introducen redundancias estructurales innecesarias.
 
 El diseño resultante es consistente, extensible y alineado con los objetivos académicos del proyecto.
+
+---
+
+## 8. Materialización física de i18n de dominio
+
+Como extensión del modelo físico, se incluyen tablas para localización bilingüe de valores de negocio:
+
+- `i18n_term_catalog`
+- `i18n_term_translation`
+- `i18n_term_materialized`
+
+La tabla materializada reduce el costo de resolución de etiquetas `es/en` durante serving API, especialmente en endpoints de alto volumen.

@@ -1,68 +1,79 @@
 # TFM — Código principal del proyecto
 
-Este es el **código principal** del TFM. El desarrollo nuevo empieza aquí.
+Este repositorio contiene el código operativo del TFM: ETL, API analítica y frontend bilingüe.
 
-## Alcance actual (Fase 2)
+## Alcance actual
 
-- Descargar datasets crudos para trazabilidad.
-- Limpiar y normalizar directamente en PostgreSQL/PostGIS.
-- Explorar relaciones localmente con Streamlit (opcional).
+- ETL extremo a extremo (`python3 main.py`) desde fuentes oficiales hacia PostgreSQL/PostGIS.
+- API con FastAPI (`web/app.py`) para dashboard, terreno y consultas guiadas.
+- Frontend Next.js (`frontend/`) con interfaz bilingüe (`es`/`en`).
+- Estrategia i18n híbrida para datos de dominio:
+  - diccionario canónico (`i18n_term_catalog`, `i18n_term_translation`),
+  - tabla materializada de serving (`i18n_term_materialized`),
+  - semilla ETL (`database/i18n_terms_seed.csv`).
 
-## Trazabilidad: demo de validación de fuentes (Semana 1) — archivada
-
-La demo técnica de Semana 1 para validar las fuentes aprobadas (descarga → JSON/JSONL local → mapa HTML local) se archivó en:
-
-- `archive/week1_data_consumption_demo/`
-
-Esa carpeta está autocontenida (incluye su propio `README`, `requirements.txt` y scripts ejecutables) y se mantiene por trazabilidad. No forma parte del runtime del proyecto principal.
-
-Para ejecutar la demo archivada de Semana 1:
-
-```bash
-cd archive/week1_data_consumption_demo && bash ./run_demo.sh
-```
-
-## Cómo ejecutar (código principal)
+## Ejecución rápida (Linux)
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Conexión a base de datos (ejemplo: ajusta según tu entorno)
 export DB_HOST=localhost
 export DB_PORT=5432
 export DB_NAME=tu_db
 export DB_USER=tu_usuario
 export DB_PASSWORD=tu_password
 
-# Ejecutar el pipeline completo (descarga → limpieza → carga → Streamlit)
 python3 main.py
+uvicorn web.app:app --reload --port 8000
 ```
 
-Los archivos crudos siempre se descargan de nuevo para mantener CI determinista.
-
-## Referencia ISO de países (whitelist)
-
-El pipeline descarga los códigos ISO 3166-1 y los carga en PostgreSQL.
-Solo se insertan en `dim_country` los países presentes en ese dataset ISO.
-
-- Archivo crudo: `data/raw/iso/country-codes.csv`
-- Tabla en BD: `iso_country_codes`
-- Uso: filtro whitelist antes de insertar en `dim_country`
-
-## Estado y auditoría del ETL
-
-El ETL registra hashes por dataset y guarda un historial de ejecuciones.
-
-- Tabla de estado: `etl_dataset_state`
-- Log histórico: `etl_dataset_run_log`
-- Comportamiento: si el hash no cambia, se omite la carga.
-
-## UI opcional (Streamlit local)
+En otra terminal:
 
 ```bash
-streamlit run streamlit_app.py
+cd frontend
+npm install
+export BACKEND_API_URL=http://127.0.0.1:8000
+npm run dev
+```
+
+## URLs locales
+
+- Frontend: `http://127.0.0.1:3000/`
+- Backend/API: `http://127.0.0.1:8000/`
+- Documentación OpenAPI: `http://127.0.0.1:8000/docs`
+
+## Comportamientos clave del runtime
+
+- Los crudos se descargan y preservan en `data/raw/` para trazabilidad.
+- Idempotencia ETL por hash:
+  - `etl_dataset_state`
+  - `etl_dataset_run_log`
+- Normalización territorial con whitelist ISO:
+  - crudo: `data/raw/iso/country-codes.csv`
+  - tabla: `iso_country_codes`
+- Capa i18n de datos servida por:
+  - `i18n_term_catalog`
+  - `i18n_term_translation`
+  - `i18n_term_materialized`
+
+## Notas del frontend
+
+- El idioma se controla con query param `lang` (`es` o `en`).
+- El frontend propaga idioma hacia endpoints backend.
+- `Explorar` usa límites por país y paginación para casos de alto volumen.
+
+## Demo archivada de Semana 1
+
+La demo original de validación de fuentes sigue archivada por trazabilidad:
+
+- `archive/week1_data_consumption_demo/`
+
+Ejecución:
+
+```bash
+cd archive/week1_data_consumption_demo && bash ./run_demo.sh
 ```
 
 ## Prerrequisitos
@@ -90,7 +101,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 
 ## Convenciones del repositorio
 
-- **Idioma**: el código y la documentación principal están en **inglés**.
+- **Idioma**: código en inglés; documentación técnica principal en español/inglés según archivo.
 - **Capa de base de datos**: el pipeline principal carga en PostgreSQL/PostGIS.
 - **Sin datos generados en Git**: `data/`, `output/` y `otros/` son generados y están ignorados por `.gitignore`.
 
@@ -100,7 +111,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 - Las descargas crudas se preservan para trazabilidad y auditoría.
 - No hay staging en JSONL en la ruta principal; los datos se limpian en memoria y se cargan directo a PostgreSQL.
 - `dataset_config` es el único registro de metadatos; no se usa `dim_dataset`.
-- Un solo comando (`python3 main.py`) ejecuta el flujo completo sin prompts interactivos.
+- Un solo comando (`python3 main.py`) ejecuta el flujo ETL completo sin prompts interactivos.
 
 
 

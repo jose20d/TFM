@@ -1,68 +1,79 @@
-# TFM — Main project codebase
+# TFM — Main Project Codebase
 
-This is the **main codebase** for the Master Thesis project. New development starts here.
+This repository contains the production code for the Master Thesis project: ETL, analytical API, and bilingual web frontend.
 
-## Current scope (Phase 2)
+## Current scope
 
-- Download raw datasets for traceability.
-- Clean and normalize data directly into PostgreSQL/PostGIS.
-- Explore relationships locally via Streamlit (optional).
+- End-to-end ETL (`python3 main.py`) from official raw sources to PostgreSQL/PostGIS.
+- Analytical API with FastAPI (`web/app.py`) for dashboard, terrain, and guided queries.
+- Next.js frontend (`frontend/`) with bilingual UI (`es`/`en`) and data localization.
+- Hybrid i18n for domain terms (`country`, `mineral`, and other domains):
+  - canonical dictionary (`i18n_term_catalog`, `i18n_term_translation`),
+  - materialized serving table (`i18n_term_materialized`),
+  - ETL seed file (`database/i18n_terms_seed.csv`).
 
-## Traceability: Week 1 data-source validation demo (archived)
-
-The Week 1 technical demo used to validate the approved data sources (download → local JSON/JSONL → local HTML map) has been archived here:
-
-- `archive/week1_data_consumption_demo/`
-
-That archived folder is self-contained (it includes its own `README`, `requirements.txt`, and runnable scripts) and is kept for traceability. It is **not** part of the main project runtime.
-
-To run the archived Week 1 demo:
-
-```bash
-cd archive/week1_data_consumption_demo && bash ./run_demo.sh
-```
-
-## How to run (main codebase)
+## Quick start (Linux)
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Database connection (example: adjust as needed)
 export DB_HOST=localhost
 export DB_PORT=5432
 export DB_NAME=your_db
 export DB_USER=your_user
 export DB_PASSWORD=your_password
 
-# Run the full pipeline (download → clean → load → Streamlit)
 python3 main.py
+uvicorn web.app:app --reload --port 8000
 ```
 
-Raw files are always re-downloaded to keep CI runs deterministic.
-
-## ISO country reference (whitelist)
-
-The pipeline downloads ISO 3166-1 country codes and loads them into PostgreSQL.
-Only countries present in that ISO dataset are inserted into `dim_country`.
-
-- Raw file: `data/raw/iso/country-codes.csv`
-- DB table: `iso_country_codes`
-- Usage: whitelist filter before inserting `dim_country`
-
-## ETL state and audit logs
-
-The ETL tracks dataset hashes and logs each run for auditability.
-
-- Current state table: `etl_dataset_state`
-- Historical run log: `etl_dataset_run_log`
-- Behavior: if the file hash is unchanged, the load step is skipped.
-
-## Optional UI (local Streamlit)
+In another terminal:
 
 ```bash
-streamlit run streamlit_app.py
+cd frontend
+npm install
+export BACKEND_API_URL=http://127.0.0.1:8000
+npm run dev
+```
+
+## Local URLs
+
+- Frontend: `http://127.0.0.1:3000/`
+- Backend/API: `http://127.0.0.1:8000/`
+- OpenAPI docs: `http://127.0.0.1:8000/docs`
+
+## Core runtime behaviors
+
+- Raw files are downloaded and preserved in `data/raw/` for traceability.
+- ETL hash/idempotency tracking:
+  - `etl_dataset_state`
+  - `etl_dataset_run_log`
+- ISO whitelist normalization before loading country dimension:
+  - raw: `data/raw/iso/country-codes.csv`
+  - DB table: `iso_country_codes`
+- Domain translation and serving:
+  - `i18n_term_catalog`
+  - `i18n_term_translation`
+  - `i18n_term_materialized`
+
+## Frontend notes
+
+- Language is controlled by `lang` query param (`es` or `en`).
+- The app propagates language to backend endpoints.
+- Explore view uses country-aware limits and paginated retrieval for high-volume cases.
+
+## Archived Week 1 demo
+
+The original Week 1 source-validation demo remains archived for traceability:
+
+- `archive/week1_data_consumption_demo/`
+
+Run it with:
+
+```bash
+cd archive/week1_data_consumption_demo && bash ./run_demo.sh
 ```
 
 ## Prerequisites
@@ -88,28 +99,27 @@ After installing PostGIS, enable it in your database (as a superuser):
 CREATE EXTENSION IF NOT EXISTS postgis;
 ```
 
-## Architecture Decisions
+## Architecture decisions
 
-- Raw datasets are preserved unmodified to keep a verifiable source of truth for audits and reprocessing.
-- Normalization writes directly to PostgreSQL to avoid intermediate JSON staging and reduce duplication of storage.
-- Dataset metadata is stored in the database to support lineage, traceability, and repeatable ETL execution.
-- PostGIS is enabled from the beginning to support geospatial queries on mineral deposit data (installed by DB admin).
-- Schema creation is idempotent to allow safe reruns in CI, local setups, and recovery workflows.
+- Raw datasets are preserved unmodified for auditability and reproducibility.
+- Normalization writes directly into PostgreSQL (no JSONL staging in main path).
+- ETL metadata and run history are persisted for lineage and repeatability.
+- PostGIS is enabled to support geospatial queries and terrain analysis.
+- Schema scripts are idempotent to support safe reruns.
 
-## Database Architecture
-- **Dataset configuration vs. ETL logs**: `dataset_config` defines sources and formats, while `etl_load_log` captures execution results and data lineage.
-- **Raw preservation**: raw downloads remain intact so every load can be reproduced or audited without ambiguity.
-- **PostgreSQL + PostGIS**: a relational core is needed for joins and analytics, and PostGIS prepares the model for spatial queries on deposits.
-- **No intermediate JSON layer**: data is normalized directly into PostgreSQL to avoid duplicate storage and reduce operational complexity.
-- **Future geospatial analytics**: the schema includes geometry fields and spatial indexes to support map-based exploration and distance queries.
+## Database architecture
+- `dataset_config` defines sources and formats.
+- ETL run tracking lives in `etl_load_log`, `etl_dataset_state`, and `etl_dataset_run_log`.
+- Domain i18n serving uses catalog + translation + materialized labels.
+- Geometry fields and spatial indexes support map-based exploration and proximity queries.
 
 ## Design constraints / tribunal guardrails
 
-- The pipeline never requires a PostgreSQL superuser; PostGIS must be enabled by an administrator beforehand.
-- Raw downloads are kept intact for traceability and auditability.
-- No JSONL staging is used in the main path; data is cleaned in-memory and loaded directly into PostgreSQL.
-- `dataset_config` is the single metadata registry table; `dim_dataset` is intentionally not used.
-- A single command (`python3 main.py`) runs the end-to-end flow with no interactive prompts.
+- The pipeline does not require superuser; PostGIS must be enabled beforehand by an admin.
+- Raw downloads are kept intact for traceability.
+- No JSONL staging in the main ETL path.
+- `dataset_config` is the metadata registry (`dim_dataset` is not used).
+- Single-command ETL execution: `python3 main.py`.
 
 ##  Repository conventions
 

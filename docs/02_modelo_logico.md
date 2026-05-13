@@ -125,6 +125,18 @@ La separación entre `dim_country` y `country_indicator` permite almacenar múlt
 
 ---
 
+## 5. Capa lógica de localización de términos (i18n)
+
+El modelo lógico actual incorpora entidades para resolver localización de valores de negocio:
+
+- `i18n_term_catalog` (dominio, valor normalizado, valor original, clave canónica)
+- `i18n_term_translation` (etiqueta por idioma)
+- `i18n_term_materialized` (serving pre-resuelto con `label_es`/`label_en`)
+
+Estas tablas permiten entrada/salida bilingüe coherente en API y frontend sin duplicar traducciones por pantalla.
+
+---
+
 ## 6. Separación por capas lógicas
 
 El modelo lógico puede interpretarse en cuatro bloques estructurales:

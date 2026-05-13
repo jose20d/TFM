@@ -39,3 +39,15 @@ CREATE INDEX IF NOT EXISTS idx_iso_country_codes_iso3
 
 CREATE INDEX IF NOT EXISTS idx_iso_country_codes_country_norm
     ON iso_country_codes (country_norm);
+
+CREATE INDEX IF NOT EXISTS idx_i18n_catalog_domain_norm
+    ON i18n_term_catalog (domain, source_value_norm);
+
+CREATE INDEX IF NOT EXISTS idx_i18n_catalog_canonical
+    ON i18n_term_catalog (canonical_key);
+
+CREATE INDEX IF NOT EXISTS idx_i18n_translation_lang
+    ON i18n_term_translation (lang, canonical_key);
+
+CREATE INDEX IF NOT EXISTS idx_i18n_materialized_domain_norm
+    ON i18n_term_materialized (domain, source_value_norm);

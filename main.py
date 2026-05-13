@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-"""Main entrypoint: download, normalize, and launch Streamlit."""
+"""Main entrypoint: download and normalize data into PostgreSQL."""
 
 import json
 import subprocess
@@ -46,7 +46,7 @@ def _run_script(path: Path, args: list[str]) -> int:
 
 
 def main() -> int:
-    """Orchestrate the end-to-end pipeline and Streamlit UI."""
+    """Orchestrate the end-to-end ETL pipeline."""
     if not CONFIG_PATH.exists():
         print(f"ERROR: missing config at {CONFIG_PATH}", file=sys.stderr)
         return 2
@@ -83,17 +83,11 @@ def main() -> int:
         if load_script.exists():
             exit_code = _run_script(load_script, [])
             if exit_code != 0:
-                print("ERROR: database load failed. Streamlit will not start.", file=sys.stderr)
+                print("ERROR: database load failed.", file=sys.stderr)
                 return exit_code
-
-        cmd = [
-            sys.executable,
-            "-m",
-            "streamlit",
-            "run",
-            str(REPO_ROOT / "streamlit_app.py"),
-        ]
-        return subprocess.call(cmd)
+        print("[ok] ETL pipeline finished.")
+        print("[next] Start web app with: uvicorn web.app:app --reload")
+        return 0
     except KeyboardInterrupt:
         print("\n[info] Interrupted by user (Ctrl+C). Exiting cleanly.")
         return 130

@@ -117,3 +117,29 @@ En futuras extensiones podrían incorporarse:
 - Optimización mediante particionamiento si el volumen de datos aumenta.
 
 El diseño actual permite dichas ampliaciones sin necesidad de reestructuración profunda.
+
+---
+
+## 10. Estrategia i18n de datos de dominio
+
+Se adoptó una estrategia híbrida para traducción de valores de negocio (países, minerales y dominios relacionados):
+
+- Catálogo canónico (`i18n_term_catalog`)
+- Traducciones por idioma (`i18n_term_translation`)
+- Serving materializado (`i18n_term_materialized`)
+- Semilla inicial versionada (`database/i18n_terms_seed.csv`)
+
+Esta decisión evita traducción ad-hoc en frontend, mejora consistencia semántica y reduce costo de traducción en tiempo de consulta.
+
+---
+
+## 11. Manejo de escenarios de volumen extremo en exploración
+
+Se formalizó el comportamiento para países con cardinalidad muy alta (ej. USA):
+
+- No renderizar puntos cuando no hay país seleccionado.
+- Aplicar límites por país (no límite global fijo).
+- Usar paginación (`limit`/`offset`) para evitar payloads masivos.
+- Mantener sincronía entre mapa y listado por página para consistencia visual.
+
+Con esto se protege rendimiento de backend/frontend y se mejora percepción de calidad en casos extremos.

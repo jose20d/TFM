@@ -17,6 +17,11 @@ from typing import Any, Iterable
 import pandas as pd
 from psycopg2.extras import execute_values
 
+try:
+    import reverse_geocoder as rg  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    rg = None  # type: ignore
+
 # Ensure repo root is on sys.path for local imports.
 # This keeps the ETL self-contained without additional packaging.
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +125,145 @@ def _norm_iso3(value: str | None) -> str | None:
         return None
     text = str(value).strip()
     return normalize_iso3(text) if text else None
+
+
+def _norm_term_token(value: str | None) -> str:
+    """Normalize free-text terms for stable i18n dictionary keys."""
+    text = str(value or "").strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def _upsert_i18n_seed(cur, seed_path: Path) -> int:
+    """Load/refresh seed translations into canonical i18n tables."""
+    if not seed_path.exists():
+        return 0
+    df = pd.read_csv(seed_path)
+    if df.empty:
+        return 0
+    required = {"domain", "source_value", "canonical_key", "label_es", "label_en"}
+    if not required.issubset(set(df.columns)):
+        return 0
+
+    payload_catalog = []
+    payload_translation = []
+    for row in df.itertuples(index=False):
+        domain = str(row.domain).strip().lower()
+        source_value = str(row.source_value).strip()
+        source_norm = _norm_term_token(source_value)
+        canonical_key = str(row.canonical_key).strip().lower()
+        label_es = str(row.label_es).strip() or source_value
+        label_en = str(row.label_en).strip() or source_value
+        if not domain or not source_value or not canonical_key:
+            continue
+        payload_catalog.append((domain, source_norm, source_value, canonical_key))
+        payload_translation.append((canonical_key, "es", label_es))
+        payload_translation.append((canonical_key, "en", label_en))
+
+    if payload_catalog:
+        execute_values(
+            cur,
+            """
+            INSERT INTO i18n_term_catalog (domain, source_value_norm, source_value_original, canonical_key)
+            VALUES %s
+            ON CONFLICT (domain, source_value_norm) DO UPDATE
+            SET source_value_original = EXCLUDED.source_value_original,
+                canonical_key = EXCLUDED.canonical_key,
+                updated_at = NOW()
+            """,
+            payload_catalog,
+        )
+    if payload_translation:
+        execute_values(
+            cur,
+            """
+            INSERT INTO i18n_term_translation (canonical_key, lang, label)
+            VALUES %s
+            ON CONFLICT (canonical_key, lang) DO UPDATE
+            SET label = EXCLUDED.label,
+                updated_at = NOW()
+            """,
+            payload_translation,
+        )
+    return len(payload_catalog)
+
+
+def _upsert_i18n_catalog_from_data(cur) -> int:
+    """Materialize source terms seen in datasets into i18n catalog."""
+    inserted = 0
+    sources = [
+        ("country", "dim_country", "country_name"),
+        ("mineral", "mrds_commodity", "commod"),
+        ("deposit_status", "mrds_deposit", "dev_stat"),
+        ("region", "mrds_location", "region"),
+        ("state_province", "mrds_location", "state_prov"),
+        ("ownership_type", "mrds_ownership", "owner_tp"),
+        ("material", "mrds_material", "material"),
+        ("ore_gangue", "mrds_material", "ore_gangue"),
+        ("rock_class", "mrds_rocks", "rock_cls"),
+        ("first_order_rock", "mrds_rocks", "first_ord_nm"),
+        ("second_order_rock", "mrds_rocks", "second_ord_nm"),
+        ("third_order_rock", "mrds_rocks", "third_ord_nm"),
+        ("age_type", "mrds_ages", "age_tp"),
+        ("phys_division", "mrds_physiography", "phys_div"),
+        ("phys_province", "mrds_physiography", "phys_prov"),
+        ("phys_section", "mrds_physiography", "phys_sect"),
+        ("phys_detail", "mrds_physiography", "phys_det"),
+    ]
+
+    for domain, table_name, column_name in sources:
+        cur.execute(
+            f"""
+            WITH src AS (
+                SELECT
+                    LOWER(TRIM({column_name})) AS source_value_norm,
+                    MIN(TRIM({column_name})) AS source_value_original
+                FROM {table_name}
+                WHERE {column_name} IS NOT NULL
+                  AND TRIM({column_name}) <> ''
+                GROUP BY LOWER(TRIM({column_name}))
+            )
+            INSERT INTO i18n_term_catalog (domain, source_value_norm, source_value_original, canonical_key)
+            SELECT %s AS domain,
+                   src.source_value_norm,
+                   src.source_value_original,
+                   %s || '_' ||
+                   REGEXP_REPLACE(src.source_value_norm, '[^a-z0-9]+', '_', 'g') || '_' ||
+                   SUBSTRING(MD5(src.source_value_norm) FROM 1 FOR 10) AS canonical_key
+            FROM src
+            ON CONFLICT (domain, source_value_norm) DO UPDATE
+            SET source_value_original = EXCLUDED.source_value_original,
+                updated_at = NOW()
+            """,
+            (domain, domain),
+        )
+        inserted += cur.rowcount
+
+    return inserted
+
+
+def _refresh_i18n_materialized(cur) -> int:
+    """Build materialized bilingual term table from dictionary + translations."""
+    cur.execute("TRUNCATE TABLE i18n_term_materialized")
+    cur.execute(
+        """
+        INSERT INTO i18n_term_materialized (
+            domain, source_value_norm, source_value_original, canonical_key, label_es, label_en
+        )
+        SELECT c.domain,
+               c.source_value_norm,
+               c.source_value_original,
+               c.canonical_key,
+               COALESCE(es.label, c.source_value_original) AS label_es,
+               COALESCE(en.label, c.source_value_original) AS label_en
+        FROM i18n_term_catalog c
+        LEFT JOIN i18n_term_translation es
+               ON es.canonical_key = c.canonical_key AND es.lang = 'es'
+        LEFT JOIN i18n_term_translation en
+               ON en.canonical_key = c.canonical_key AND en.lang = 'en'
+        """
+    )
+    return cur.rowcount
 
 
 def _load_worldbank_rows(
@@ -258,6 +402,68 @@ def _insert_iso_country_codes(cur, df: pd.DataFrame) -> int:
     """
     execute_values(cur, sql, rows)
     return len(rows)
+
+
+def _iso3_canonical_maps(df: pd.DataFrame) -> tuple[dict[str, str], dict[str, str]]:
+    """Build canonical ISO3 -> (country_norm, country_name) maps from ISO reference data."""
+    if df.empty:
+        return {}, {}
+    iso3_to_norm: dict[str, str] = {}
+    iso3_to_name: dict[str, str] = {}
+    for row in df.itertuples(index=False):
+        iso3_raw = getattr(row, "iso3", None)
+        norm_raw = getattr(row, "country_norm", None)
+        name_raw = getattr(row, "country_name", None)
+        if not isinstance(iso3_raw, str) or not isinstance(norm_raw, str):
+            continue
+        iso3 = normalize_iso3(iso3_raw)
+        norm = normalize_country_name(norm_raw)
+        if not norm:
+            continue
+        iso3_to_norm[iso3] = norm
+        if isinstance(name_raw, str) and name_raw.strip():
+            iso3_to_name[iso3] = name_raw.strip()
+    return iso3_to_norm, iso3_to_name
+
+
+def _canonicalize_country_rows(
+    rows: Iterable[tuple[str, str, str | None]],
+    iso3_to_norm: dict[str, str],
+    iso3_to_name: dict[str, str],
+) -> list[tuple[str, str, str | None]]:
+    """
+    Canonicalize country tuples using ISO3 when available.
+
+    This avoids creating multiple dim_country rows with the same ISO3 but different names.
+    """
+    out: list[tuple[str, str, str | None]] = []
+    for name, norm, iso3 in rows:
+        iso3_norm = _norm_iso3(iso3)
+        if iso3_norm and iso3_norm in iso3_to_norm:
+            canonical_norm = iso3_to_norm[iso3_norm]
+            canonical_name = iso3_to_name.get(iso3_norm, name)
+            out.append((canonical_name, canonical_norm, iso3_norm))
+            continue
+        out.append((name, norm, iso3_norm))
+    return out
+
+
+def _canonicalize_indicator_rows(
+    rows: list[dict[str, Any]],
+    iso3_to_norm: dict[str, str],
+    iso3_to_name: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Apply ISO3 canonicalization to parsed indicator rows in memory."""
+    canonical_rows: list[dict[str, Any]] = []
+    for row in rows:
+        row_copy = dict(row)
+        iso3_norm = _norm_iso3(row_copy.get("iso3"))
+        if iso3_norm and iso3_norm in iso3_to_norm:
+            row_copy["iso3"] = iso3_norm
+            row_copy["country_norm"] = iso3_to_norm[iso3_norm]
+            row_copy["country"] = iso3_to_name.get(iso3_norm, row_copy.get("country"))
+        canonical_rows.append(row_copy)
+    return canonical_rows
 
 
 def _load_fsi_rows(
@@ -667,10 +873,241 @@ def _insert_countries(cur, rows: Iterable[tuple[str, str, str | None]]) -> None:
     execute_values(cur, sql, rows)
 
 
+def _merge_dim_country_duplicates_by_iso3(cur) -> int:
+    """
+    Merge duplicate dim_country rows that share the same ISO3.
+
+    Prefers the row matching ISO canonical country_norm when available.
+    """
+    cur.execute(
+        """
+        SELECT iso3
+        FROM dim_country
+        WHERE iso3 IS NOT NULL AND TRIM(iso3) <> ''
+        GROUP BY iso3
+        HAVING COUNT(*) > 1
+        ORDER BY iso3
+        """
+    )
+    duplicate_iso3 = [row[0] for row in cur.fetchall()]
+    merged = 0
+    for iso3 in duplicate_iso3:
+        cur.execute(
+            """
+            SELECT c.country_id,
+                   c.country_name,
+                   c.country_norm,
+                   i.country_norm AS iso_country_norm
+            FROM dim_country c
+            LEFT JOIN iso_country_codes i ON i.iso3 = c.iso3
+            WHERE c.iso3 = %s
+            ORDER BY
+                CASE WHEN i.country_norm IS NOT NULL
+                          AND c.country_norm = i.country_norm THEN 0 ELSE 1 END,
+                c.country_id
+            """,
+            (iso3,),
+        )
+        rows = cur.fetchall()
+        if len(rows) <= 1:
+            continue
+        keep_id = int(rows[0][0])
+        dup_ids = [int(r[0]) for r in rows[1:]]
+
+        for dup_id in dup_ids:
+            cur.execute(
+                """
+                INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value, created_at)
+                SELECT %s, dataset_id, indicator_code, year, value, created_at
+                FROM country_indicator
+                WHERE country_id = %s
+                ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
+                SET value = EXCLUDED.value
+                """,
+                (keep_id, dup_id),
+            )
+            cur.execute("DELETE FROM country_indicator WHERE country_id = %s", (dup_id,))
+            cur.execute("UPDATE mrds_location SET country_id = %s WHERE country_id = %s", (keep_id, dup_id))
+            cur.execute("DELETE FROM dim_country WHERE country_id = %s", (dup_id,))
+            merged += 1
+    return merged
+
+
 def _country_id_map(cur) -> dict[str, int]:
     """Build a country_norm → country_id map."""
     cur.execute("SELECT country_id, country_norm FROM dim_country")
     return {row[1]: row[0] for row in cur.fetchall()}
+
+
+def _iso2_country_id_map(cur) -> dict[str, int]:
+    """Build an ISO2 → country_id map using ISO reference data."""
+    cur.execute(
+        """
+        SELECT UPPER(i.iso2) AS iso2, c.country_id
+        FROM dim_country c
+        JOIN iso_country_codes i ON i.iso3 = c.iso3
+        WHERE i.iso2 IS NOT NULL AND TRIM(i.iso2) <> ''
+        """
+    )
+    return {row[0]: int(row[1]) for row in cur.fetchall()}
+
+
+def _infer_missing_mrds_locations(cur, iso2_to_country_id: dict[str, int]) -> int:
+    """
+    Infer missing MRDS locations from deposit coordinates.
+
+    This only inserts rows for deposits that currently have no mrds_location.
+    Country is mapped via ISO2 (reverse geocoder cc -> dim_country country_id).
+    """
+    if rg is None:
+        print(
+            "[warn] reverse_geocoder not installed; skipping coordinate-based location inference",
+            file=sys.stderr,
+        )
+        return 0
+    if not iso2_to_country_id:
+        return 0
+
+    cur.execute(
+        """
+        SELECT d.dep_id, d.latitude, d.longitude
+        FROM mrds_deposit d
+        LEFT JOIN mrds_location l ON l.dep_id = d.dep_id
+        WHERE l.dep_id IS NULL
+          AND d.latitude IS NOT NULL
+          AND d.longitude IS NOT NULL
+        ORDER BY d.dep_id
+        """
+    )
+    missing = cur.fetchall()
+    if not missing:
+        return 0
+
+    rows_to_insert: list[tuple[int, int | None, str | None, None, None]] = []
+    batch_size = 5000
+    for start in range(0, len(missing), batch_size):
+        batch = missing[start : start + batch_size]
+        coords = [(float(r[1]), float(r[2])) for r in batch]
+        matches = rg.search(coords, mode=1)
+        for (dep_id, _lat, _lon), match in zip(batch, matches):
+            iso2 = str(match.get("cc") or "").upper()
+            admin1 = str(match.get("admin1") or "").strip() or None
+            country_id = iso2_to_country_id.get(iso2)
+            # Keep state when available even if country is unresolved.
+            if country_id is None and admin1 is None:
+                continue
+            rows_to_insert.append((int(dep_id), country_id, admin1, None, None))
+
+    if not rows_to_insert:
+        return 0
+
+    sql = """
+        INSERT INTO mrds_location (dep_id, country_id, state_prov, region, county)
+        VALUES %s
+        ON CONFLICT (dep_id) DO NOTHING
+    """
+    execute_values(cur, sql, rows_to_insert)
+    return len(rows_to_insert)
+
+
+def _repair_existing_mrds_locations(
+    cur,
+    iso2_to_country_id: dict[str, int],
+    *,
+    fix_country: bool,
+    fix_state: bool,
+) -> int:
+    """
+    Repair existing mrds_location rows using deposit coordinates.
+
+    - fix_country: fill country_id when null
+    - fix_state: fill state_prov when null/blank/N/A
+    """
+    if rg is None:
+        return 0
+    if not iso2_to_country_id:
+        return 0
+
+    predicates = []
+    if fix_country:
+        predicates.append("l.country_id IS NULL")
+    if fix_state:
+        predicates.append("l.state_prov IS NULL OR TRIM(l.state_prov) = '' OR l.state_prov = 'N/A'")
+    if not predicates:
+        return 0
+
+    cur.execute(
+        f"""
+        SELECT l.dep_id, d.latitude, d.longitude, l.country_id, l.state_prov
+        FROM mrds_location l
+        JOIN mrds_deposit d ON d.dep_id = l.dep_id
+        WHERE d.latitude IS NOT NULL
+          AND d.longitude IS NOT NULL
+          AND ({' OR '.join(predicates)})
+        ORDER BY l.dep_id
+        """
+    )
+    targets = cur.fetchall()
+    if not targets:
+        return 0
+
+    updates: list[tuple[int | None, str | None, int]] = []
+    batch_size = 5000
+    for start in range(0, len(targets), batch_size):
+        batch = targets[start : start + batch_size]
+        coords = [(float(r[1]), float(r[2])) for r in batch]
+        matches = rg.search(coords, mode=1)
+        for (dep_id, _lat, _lon, country_id, state_prov), match in zip(batch, matches):
+            next_country = int(country_id) if country_id is not None else None
+            next_state = str(state_prov).strip() if state_prov is not None else None
+            changed = False
+
+            if fix_country and next_country is None:
+                iso2 = str(match.get("cc") or "").upper()
+                inferred_country = iso2_to_country_id.get(iso2)
+                if inferred_country is not None:
+                    next_country = int(inferred_country)
+                    changed = True
+
+            if fix_state and (next_state is None or next_state == "" or next_state == "N/A"):
+                inferred_state = str(match.get("admin1") or "").strip() or None
+                if inferred_state:
+                    next_state = inferred_state
+                    changed = True
+
+            if changed:
+                updates.append((next_country, next_state, int(dep_id)))
+
+    if not updates:
+        return 0
+
+    sql = """
+        UPDATE mrds_location AS l
+        SET country_id = v.country_id,
+            state_prov = v.state_prov
+        FROM (VALUES %s) AS v(country_id, state_prov, dep_id)
+        WHERE l.dep_id = v.dep_id
+    """
+    execute_values(cur, sql, updates)
+    return len(updates)
+
+
+def _run_mrds_location_reconcile(cur) -> tuple[int, int, int]:
+    """
+    Run the location reconcile flow:
+    1) fill missing country on existing rows
+    2) insert rows for deposits with no location
+    3) repair country/state where still missing or N/A
+    """
+    iso2_map = _iso2_country_id_map(cur)
+    pre_country = _repair_existing_mrds_locations(
+        cur, iso2_map, fix_country=True, fix_state=False
+    )
+    inserted_missing = _infer_missing_mrds_locations(cur, iso2_map)
+    post_repair = _repair_existing_mrds_locations(
+        cur, iso2_map, fix_country=True, fix_state=True
+    )
+    return pre_country, inserted_missing, post_repair
 
 
 def _insert_dataset_config(cur, cfg: dict[str, Any]) -> None:
@@ -754,6 +1191,7 @@ def main() -> int:
     config_path = REPO_ROOT / "configs" / "datasets.json"
     raw_dir = REPO_ROOT / "data" / "raw"
     aliases_path = REPO_ROOT / "references" / "country_aliases.json"
+    i18n_seed_path = REPO_ROOT / "database" / "i18n_terms_seed.csv"
     mrds_extract = raw_dir / "mrds_csv" / "extracted"
 
     if not config_path.exists():
@@ -777,8 +1215,11 @@ def main() -> int:
             iso_df = pd.DataFrame()
             iso3_set: set[str] = set()
             iso_name_set: set[str] = set()
+            iso3_to_norm: dict[str, str] = {}
+            iso3_to_name: dict[str, str] = {}
             if iso_path and iso_path.exists():
                 iso_df, iso3_set, iso_name_set = _read_iso_country_codes(iso_path, aliases)
+                iso3_to_norm, iso3_to_name = _iso3_canonical_maps(iso_df)
 
             def log_no_change(dataset_id: str, hash_value: str | None, duration_ms: int) -> None:
                 _insert_run_log(
@@ -866,8 +1307,10 @@ def main() -> int:
 
             def load_worldbank(dataset_id: str, raw_path: Path) -> tuple[int, int]:
                 rows = _load_worldbank_rows(raw_path, dataset_id, aliases)
+                rows = _canonicalize_indicator_rows(rows, iso3_to_norm, iso3_to_name)
                 countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
                 countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                countries = _canonicalize_country_rows(countries, iso3_to_norm, iso3_to_name)
                 _insert_countries(cur, countries)
                 country_map = _country_id_map(cur)
 
@@ -904,8 +1347,10 @@ def main() -> int:
                 fsi_entry = _dataset_entry(cfg, "fsi")
                 year_hint = _infer_year_from_dataset(fsi_entry, raw_path)
                 rows = _load_fsi_rows(raw_path, aliases, dataset_id="fsi", year_hint=year_hint)
+                rows = _canonicalize_indicator_rows(rows, iso3_to_norm, iso3_to_name)
                 countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
                 countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                countries = _canonicalize_country_rows(countries, iso3_to_norm, iso3_to_name)
                 _insert_countries(cur, countries)
                 country_map = _country_id_map(cur)
 
@@ -942,8 +1387,10 @@ def main() -> int:
                 cpi_entry = _dataset_entry(cfg, "cpi")
                 year_hint = _infer_year_from_dataset(cpi_entry, raw_path)
                 rows = _load_cpi_rows(raw_path, aliases, dataset_id="cpi", year_hint=year_hint)
+                rows = _canonicalize_indicator_rows(rows, iso3_to_norm, iso3_to_name)
                 countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
                 countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                countries = _canonicalize_country_rows(countries, iso3_to_norm, iso3_to_name)
                 _insert_countries(cur, countries)
                 country_map = _country_id_map(cur)
 
@@ -1074,6 +1521,14 @@ def main() -> int:
                     """
                     execute_values(cur, sql, rows)
 
+                pre_country, inferred_count, repaired_count = _run_mrds_location_reconcile(cur)
+                if pre_country:
+                    print(f"[info] mrds_location country backfilled before insert: {pre_country}")
+                if inferred_count:
+                    print(f"[info] mrds_location inferred from coordinates: {inferred_count}")
+                if repaired_count:
+                    print(f"[info] mrds_location repaired (country/state): {repaired_count}")
+
                 related = {
                     "Commodity": (
                         "mrds_commodity",
@@ -1138,6 +1593,10 @@ def main() -> int:
 
             if "iso_country_codes" in dataset_ids:
                 process_dataset("iso_country_codes", iso_path, load_iso_codes)
+                merged = _merge_dim_country_duplicates_by_iso3(cur)
+                if merged:
+                    conn.commit()
+                    print(f"[info] dim_country merged duplicate ISO3 rows: {merged}")
             if "worldbank_gdp" in dataset_ids:
                 gdp_path = _dataset_path(cfg, "worldbank_gdp", raw_dir)
                 process_dataset("worldbank_gdp", gdp_path, lambda: load_worldbank("worldbank_gdp", gdp_path))
@@ -1161,6 +1620,24 @@ def main() -> int:
             if "mrds_csv" in dataset_ids:
                 mrds_zip = _dataset_path(cfg, "mrds_csv", raw_dir)
                 process_dataset("mrds_csv", mrds_zip, lambda: load_mrds(mrds_zip))
+                pre_country, inferred_count, repaired_count = _run_mrds_location_reconcile(cur)
+                if pre_country:
+                    print(f"[info] mrds_location country backfilled (reconcile): {pre_country}")
+                if inferred_count:
+                    print(f"[info] mrds_location inferred from coordinates (reconcile): {inferred_count}")
+                if repaired_count:
+                    print(f"[info] mrds_location repaired country/state (reconcile): {repaired_count}")
+                if pre_country or inferred_count or repaired_count:
+                    conn.commit()
+
+            seeded_terms = _upsert_i18n_seed(cur, i18n_seed_path)
+            catalog_terms = _upsert_i18n_catalog_from_data(cur)
+            materialized_terms = _refresh_i18n_materialized(cur)
+            conn.commit()
+            print(
+                "[info] i18n dictionary refreshed: "
+                f"seed={seeded_terms}, catalog_updates={catalog_terms}, materialized={materialized_terms}"
+            )
 
         _print_sanity_checks(conn)
 

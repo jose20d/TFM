@@ -1,0 +1,66 @@
+.headerPanel {
+  margin-top: 1rem;
+}
+
+.filters {
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0.7rem;
+  align-items: end;
+}
+
+.filters label {
+  display: grid;
+  gap: 0.35rem;
+  color: #a8bfd8;
+  font-size: 0.86rem;
+}
+
+.filters input,
+.filters select {
+  border-radius: 8px;
+  border: 1px solid #244569;
+  background: #081b33;
+  color: #fff;
+  padding: 0.5rem 0.6rem;
+}
+
+.chartsGrid {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+}
+
+.tooltip {
+  border-radius: 8px;
+  border: 1px solid rgba(104, 144, 182, 0.35);
+  background: rgba(5, 20, 37, 0.96);
+  color: #d8e8f8;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.tooltip p {
+  margin: 0.12rem 0;
+}
+
+.insights {
+  margin: 0.3rem 0 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+@media (max-width: 1024px) {
+  .filters {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .chartsGrid {
+    grid-template-columns: 1fr;
+  }
+}
