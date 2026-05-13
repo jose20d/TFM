@@ -169,12 +169,17 @@ export default function CompareClient() {
     ])
       .then(([countriesData, defaultsData, healthData]) => {
         const allCountries = Array.isArray(countriesData) ? countriesData : [];
-        const defaults = Array.isArray(defaultsData?.compare_iso3)
+        const defaultsFromBackend = Array.isArray(defaultsData?.compare_iso3)
           ? defaultsData.compare_iso3
           : [];
-        const cleanIso = Array.from(
-          new Set(defaults.map((iso) => normalize(iso)).filter((iso) => iso.length === 3)),
+        const preferredIso = ["CRI", "MEX", "ESP"];
+        const availablePreferred = preferredIso.filter((iso) =>
+          allCountries.some((country) => normalize(country.iso3) === iso),
+        );
+        const fallbackIso = Array.from(
+          new Set(defaultsFromBackend.map((iso) => normalize(iso)).filter((iso) => iso.length === 3)),
         ).slice(0, 3);
+        const cleanIso = (availablePreferred.length >= 2 ? availablePreferred : fallbackIso).slice(0, 3);
 
         setCountries(allCountries);
         setSelectedIso(cleanIso);
@@ -263,18 +268,15 @@ export default function CompareClient() {
   }, [visibleRows, sortConfig, lang]);
 
   const exampleCountries = useMemo(() => {
-    const selected = new Set(selectedIso);
-    const exampleIso3 = ["CRI", "CHL", "MEX"];
+    const exampleIso3 = ["CRI", "MEX", "ESP"];
     return exampleIso3
       .map((iso3) =>
         countries.find(
-          (country) =>
-            normalize(country.iso3) === iso3 &&
-            !selected.has(normalize(country.iso3)),
+          (country) => normalize(country.iso3) === iso3,
         ),
       )
       .filter(Boolean);
-  }, [countries, selectedIso]);
+  }, [countries]);
 
   const chartRows = visibleRows.slice(0, 5);
   const gdpChartData = chartRows.map((row) => ({
@@ -286,6 +288,36 @@ export default function CompareClient() {
     deposits: toNumeric(row.deposits) ?? 0,
   }));
   const maxDepositsForRadial = Math.max(1, ...chartRows.map((row) => Number(row.deposits || 0)));
+  const acronymLegend = useMemo(
+    () => [
+      {
+        short: "ISO",
+        es: "Codigo estandar internacional del pais (ISO 3166-1 alfa-3).",
+        en: "International country standard code (ISO 3166-1 alpha-3).",
+      },
+      {
+        short: "PIB / GDP",
+        es: "Producto Interno Bruto. Indica el tamano economico del pais.",
+        en: "Gross Domestic Product. Indicates the economic size of the country.",
+      },
+      {
+        short: "IPC / CPI",
+        es: "Indice de Percepcion de Corrupcion. Valores altos indican menor corrupcion percibida.",
+        en: "Corruption Perceptions Index. Higher values indicate lower perceived corruption.",
+      },
+      {
+        short: "EFI / FSI",
+        es: "Indice de Fragilidad Estatal. Valores altos indican mayor fragilidad institucional.",
+        en: "Fragile States Index. Higher values indicate greater institutional fragility.",
+      },
+      {
+        short: "Dep/PIB",
+        es: "Relacion entre depositos registrados y PIB para comparar intensidad relativa.",
+        en: "Ratio between registered deposits and GDP to compare relative intensity.",
+      },
+    ],
+    [],
+  );
 
   function addCountry(iso3) {
     const clean = normalize(iso3);
@@ -347,7 +379,7 @@ export default function CompareClient() {
             </p>
           )}
 
-          <div className="chips-wrap">
+          <div className="chips-wrap compare-selected-chips">
             {selectedIso.map((iso) => {
               const country = countries.find((item) => normalize(item.iso3) === iso);
               return (
@@ -370,21 +402,41 @@ export default function CompareClient() {
                 key={`suggested-${country.iso3}`}
                 type="button"
                 className="chip"
-                disabled={!canAddMoreCountries}
+                disabled={!canAddMoreCountries || selectedIso.includes(normalize(country.iso3))}
                 onClick={() => addCountry(country.iso3)}
               >
                 {country.country_name}
               </button>
             ))}
           </div>
-
-          <div className="compare-search">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t(lang, "compareSearch")}
-              disabled={!canAddMoreCountries}
-            />
+          <div className="compare-search-row">
+            <div className="compare-search">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t(lang, "compareSearch")}
+                disabled={!canAddMoreCountries}
+              />
+            </div>
+            <div className="acronym-guide-row">
+              <div className="acronym-guide acronym-guide-inline">
+                <span className="acronym-guide-title">
+                  {lang === "en" ? "Acronym guide" : "Guia de acronimos"}
+                </span>
+                <div className="acronym-guide-chips">
+                  {acronymLegend.map((item) => (
+                    <span
+                      key={`acr-${item.short}`}
+                      className="acronym-guide-chip acronym-hint"
+                      data-tooltip={lang === "en" ? item.en : item.es}
+                      tabIndex={0}
+                    >
+                      {item.short}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
           {search.trim() && (
             <div className="search-results">
@@ -441,7 +493,11 @@ export default function CompareClient() {
                         <th>
                           <AcronymHint
                             short="ISO"
-                            full="Codigo estandar internacional del pais (ISO 3166-1 alfa-3)."
+                            full={
+                              lang === "en"
+                                ? "International country standard code (ISO 3166-1 alpha-3)."
+                                : "Codigo estandar internacional del pais (ISO 3166-1 alfa-3)."
+                            }
                           />
                         </th>
                         <th>
@@ -455,7 +511,11 @@ export default function CompareClient() {
                             {lang === "en" ? "Deposits" : "Depositos"}{" "}
                             <AcronymHint
                               short="Dep/PIB"
-                              full="Relacion entre depositos registrados y tamano economico del pais. Permite comparar intensidad relativa y no volumen absoluto."
+                              full={
+                                lang === "en"
+                                  ? "Ratio between registered deposits and country economic size. It compares relative intensity instead of absolute volume."
+                                  : "Relacion entre depositos registrados y tamano economico del pais. Permite comparar intensidad relativa y no volumen absoluto."
+                              }
                             />{" "}
                             {sortMarker("deposits")}
                           </button>
@@ -470,7 +530,11 @@ export default function CompareClient() {
                           >
                             <AcronymHint
                               short="PIB"
-                              full="Producto Interno Bruto utilizado como indicador economico comparativo."
+                              full={
+                                lang === "en"
+                                  ? "GDP: Gross Domestic Product used as a comparative economic indicator."
+                                  : "PIB: Producto Interno Bruto utilizado como indicador economico comparativo."
+                              }
                             />{" "}
                             {sortMarker("gdp")}
                           </button>
@@ -485,7 +549,11 @@ export default function CompareClient() {
                           >
                             <AcronymHint
                               short="IPC"
-                              full="CPI: indice de percepcion de corrupcion. Valores altos indican menor corrupcion percibida."
+                              full={
+                                lang === "en"
+                                  ? "CPI: Corruption Perceptions Index. Higher values indicate lower perceived corruption."
+                                  : "IPC/CPI: indice de percepcion de corrupcion. Valores altos indican menor corrupcion percibida."
+                              }
                             />{" "}
                             {sortMarker("cpi")}
                           </button>
@@ -500,7 +568,11 @@ export default function CompareClient() {
                           >
                             <AcronymHint
                               short="EFI"
-                              full="FSI: indice de fragilidad estatal. Valores altos indican mayor fragilidad institucional."
+                              full={
+                                lang === "en"
+                                  ? "FSI: Fragile States Index. Higher values indicate greater institutional fragility."
+                                  : "EFI/FSI: indice de fragilidad estatal. Valores altos indican mayor fragilidad institucional."
+                              }
                             />{" "}
                             {sortMarker("fsi")}
                           </button>

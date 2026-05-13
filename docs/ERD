@@ -80,6 +80,46 @@ CREATE TABLE IF NOT EXISTS public.etl_load_log
     CONSTRAINT etl_load_log_pkey PRIMARY KEY (load_id)
 );
 
+CREATE TABLE IF NOT EXISTS public.i18n_term_catalog
+(
+    term_id bigserial NOT NULL,
+    domain text COLLATE pg_catalog."default" NOT NULL,
+    source_value_norm text COLLATE pg_catalog."default" NOT NULL,
+    source_value_original text COLLATE pg_catalog."default" NOT NULL,
+    canonical_key text COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT i18n_term_catalog_pkey PRIMARY KEY (term_id),
+    CONSTRAINT i18n_term_catalog_domain_canonical_key_key UNIQUE (domain, canonical_key),
+    CONSTRAINT i18n_term_catalog_domain_source_value_norm_key UNIQUE (domain, source_value_norm)
+);
+
+CREATE TABLE IF NOT EXISTS public.i18n_term_materialized
+(
+    mat_id bigserial NOT NULL,
+    domain text COLLATE pg_catalog."default" NOT NULL,
+    source_value_norm text COLLATE pg_catalog."default" NOT NULL,
+    source_value_original text COLLATE pg_catalog."default" NOT NULL,
+    canonical_key text COLLATE pg_catalog."default" NOT NULL,
+    label_es text COLLATE pg_catalog."default" NOT NULL,
+    label_en text COLLATE pg_catalog."default" NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT i18n_term_materialized_pkey PRIMARY KEY (mat_id),
+    CONSTRAINT i18n_term_materialized_domain_source_value_norm_key UNIQUE (domain, source_value_norm)
+);
+
+CREATE TABLE IF NOT EXISTS public.i18n_term_translation
+(
+    translation_id bigserial NOT NULL,
+    canonical_key text COLLATE pg_catalog."default" NOT NULL,
+    lang character(2) COLLATE pg_catalog."default" NOT NULL,
+    label text COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT i18n_term_translation_pkey PRIMARY KEY (translation_id),
+    CONSTRAINT i18n_term_translation_canonical_key_lang_key UNIQUE (canonical_key, lang)
+);
+
 CREATE TABLE IF NOT EXISTS public.iso_country_codes
 (
     iso_id serial NOT NULL,

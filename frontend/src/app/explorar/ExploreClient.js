@@ -186,6 +186,12 @@ export default function ExploreClient() {
   }, [filters, page, lang, buildExploreParams]);
 
   const selectedCountryLabel = countries.find((country) => country.iso3 === filters.countryIso)?.country_name || "Todos";
+  const selectedMineralLabel = useMemo(() => {
+    const value = filters.mineral.trim();
+    if (!value) return lang === "en" ? "All" : "Todos";
+    const selected = minerals.find((item) => item.value === value);
+    return selected?.label || value;
+  }, [filters.mineral, minerals, lang]);
   const mapRows = useMemo(() => listRows, [listRows]);
   const renderedUntil = page * RESULTS_PAGE_SIZE + listRows.length;
   const hiddenMapRows = Math.max(0, totalRows - renderedUntil);
@@ -273,7 +279,7 @@ export default function ExploreClient() {
             </div>
             <div className="summary-item">
               <h3>{lang === "en" ? "Filtered mineral" : "Mineral filtrado"}</h3>
-              <p>{filters.mineral.trim() || (lang === "en" ? "All" : "Todos")}</p>
+              <p>{selectedMineralLabel}</p>
             </div>
             <div className="summary-item">
               <h3>{lang === "en" ? "Loaded points" : "Puntos cargados"}</h3>

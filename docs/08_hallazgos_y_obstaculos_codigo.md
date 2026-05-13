@@ -431,3 +431,15 @@ Nota metodologica: los bytes para `cpi`, `fsi`, `worldbank_gdp` y `worldbank_pop
 - **Volumen alto en MRDS** con varias tablas 1-N, que exige estrategia de consultas, indices y agregaciones para front analitico.
 - **Calidad geoespacial no perfecta** (casos sin `country_id` en `mrds_location`) que puede afectar filtros por pais y lectura visual en mapa.
 - **Riesgo de drift de formato externo** (cambios de columnas/nombres en fuentes publicas) que obliga a mantener validaciones y fallbacks de parseo.
+
+### 8.9 Refactor tecnico FastAPI a arquitectura modular
+
+- Se completo la migracion de backend FastAPI desde un archivo monolitico hacia una estructura modular por capas:
+  - `web/app.py` como punto de entrada y composicion de routers.
+  - `web/routers/*` para definicion de rutas por dominio funcional.
+  - `web/services/*` para logica de negocio y consultas.
+  - `web/services/common/*` para funciones compartidas (query DB, i18n y limites de exploracion).
+  - `web/db.py` y `web/utils/*` para utilidades transversales.
+- Se mantuvieron contratos de API y comportamiento funcional (rutas, parametros y payloads) para evitar regresiones en frontend.
+- Como cierre del refactor, se elimino la implementacion legacy (`web/services/api_impl.py`) al quedar sin referencias activas.
+- Beneficio principal: menor acoplamiento, mejor mantenibilidad y mayor capacidad para evolucionar endpoints por dominio sin afectar el resto del sistema.

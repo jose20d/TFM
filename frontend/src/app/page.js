@@ -81,7 +81,12 @@ async function readJson(endpoint, fallback) {
 }
 
 function normalizeTerm(value) {
-  return String(value || "").trim().toUpperCase();
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
 }
 
 function countryOptionLabel(country) {
@@ -136,7 +141,7 @@ function resolveCountrySelection(rawTerm, countries, fallbackIso3) {
   }
 
   const byContains = countries.find((country) =>
-    countryOptionLabel(country).toUpperCase().includes(term),
+    normalizeTerm(countryOptionLabel(country)).includes(term),
   );
   if (byContains) {
     return { iso3: byContains.iso3, label: countryOptionLabel(byContains) };
@@ -192,6 +197,7 @@ export default async function Home({ searchParams }) {
                 src="/images/hero/planet_crop.png"
                 alt="Planeta de contexto global"
                 fill
+                sizes="(max-width: 720px) 100vw, 1240px"
                 priority
                 className="hero-image-content"
               />
