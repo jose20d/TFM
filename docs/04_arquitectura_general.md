@@ -6,7 +6,7 @@ La arquitectura del sistema responde a un enfoque estructurado en capas, donde l
 
 El flujo general puede representarse de la siguiente forma:
 
-ETL → PostgreSQL → Capa de visualización (Streamlit)
+ETL → PostgreSQL/PostGIS → API FastAPI → Frontend Next.js
 
 Esta separación permite mantener coherencia estructural, trazabilidad y capacidad analítica sin mezclar responsabilidades.
 
@@ -43,24 +43,33 @@ Además, la inclusión de soporte geoespacial mediante PostGIS permite extender 
 
 ---
 
-### 2.3 Capa de consulta y visualización
+### 2.3 Capa de servicios (FastAPI)
 
-La capa de visualización, implementada mediante Streamlit, cumple una función de validación funcional del modelo.
+La capa de servicios expone endpoints REST para consumo del frontend analítico.
 
 Sus responsabilidades incluyen:
 
-- Ejecutar consultas representativas.
-- Mostrar resultados agregados por país o mineral.
-- Permitir filtrado dinámico.
-- Validar la integración entre dominio geológico e indicadores.
+- Encapsular consultas SQL para dashboards y exploración.
+- Aplicar localización de payloads (`lang=es/en`) sobre datos de dominio.
+- Exponer endpoints espaciales (`terrain/*`) soportados por PostGIS.
+- Controlar validaciones de entrada y límites de consulta.
 
-Esta capa no constituye un sistema de producción ni una arquitectura de servicios, sino un entorno exploratorio que demuestra la operatividad del modelo relacional.
+### 2.4 Capa de visualización (Next.js)
+
+La capa de visualización se implementa en `frontend/` con Next.js y React.
+
+Sus responsabilidades incluyen:
+
+- Render de vistas analíticas (`Inicio`, `Explorar`, `Comparar`, `Analisis`, `Consultas`, `Terreno`).
+- Enrutado por páginas y estado de filtros en cliente.
+- Propagación del idioma activo hacia el backend.
+- Visualización geoespacial (Leaflet) y gráfica (Recharts).
 
 ---
 
 ## 3. Separación por capas lógicas
 
-Desde una perspectiva estructural, el sistema puede dividirse en cuatro bloques:
+Desde una perspectiva estructural, el sistema puede dividirse en cinco bloques:
 
 1. **Dominio geológico**
    - `mrds_deposit`
@@ -79,6 +88,11 @@ Desde una perspectiva estructural, el sistema puede dividirse en cuatro bloques:
    - `etl_load_log`
    - `etl_dataset_state`
    - `etl_dataset_run_log`
+
+5. **Servicio y presentación**
+   - API FastAPI (`web/app.py`)
+   - Frontend Next.js (`frontend/src/app/*`)
+   - i18n de dominio (catálogo/traducción/materialización)
 
 Esta separación reduce acoplamiento, mejora mantenibilidad y facilita evolución futura.
 
@@ -101,9 +115,9 @@ La arquitectura se fundamenta en los siguientes principios:
 La arquitectura implementada corresponde a un entorno académico y local. No incluye:
 
 - Arquitectura distribuida.
-- API REST desacoplada.
+- Microservicios desacoplados por dominio.
 - Gestión avanzada de usuarios.
 - Despliegue en contenedores productivos.
 - Infraestructura de alta disponibilidad.
 
-Estas decisiones responden al alcance del proyecto, centrado en modelado y persistencia más que en ingeniería de producción.
+Estas decisiones responden al alcance del proyecto, centrado en integración de datos, analítica y visualización operativa más que en despliegue enterprise.

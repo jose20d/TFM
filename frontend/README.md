@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Frontend (Next.js)
 
-## Getting Started
+This folder contains the product UI for the TFM project.
 
-First, run the development server:
+## Stack
+
+- Next.js (App Router)
+- React
+- Leaflet / react-leaflet (maps)
+- Recharts (charts)
+
+## Run locally
 
 ```bash
+npm install
+export BACKEND_API_URL=http://127.0.0.1:8000
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://127.0.0.1:3000/`.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `BACKEND_API_URL`: FastAPI base URL used by the frontend proxy route.
 
-## Learn More
+## Language behavior
 
-To learn more about Next.js, take a look at the following resources:
+- UI language is controlled through `lang` query param (`es`, `en`).
+- Header language switch propagates `lang` to backend requests.
+- Domain values (countries, minerals, statuses, etc.) are localized by backend i18n materialization.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Main routes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `/` - home KPIs and highlights
+- `/explorar` - geoterritorial exploration (country-aware limits + paginated retrieval)
+- `/comparar` - country comparison
+- `/analisis` - global analysis charts
+- `/consultas` - guided analytical queries
+- `/terreno` - terrain-oriented spatial tools
 
-## Deploy on Vercel
+## Notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The frontend uses `/api/backend/[...path]` as internal proxy to FastAPI.
+- For stable dev behavior after large UI refactors, clear `.next/` and restart dev server.

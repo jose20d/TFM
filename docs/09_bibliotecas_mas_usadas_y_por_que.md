@@ -8,34 +8,34 @@ Este documento lista las bibliotecas mas usadas actualmente en el proyecto y su 
   - Python: `requirements.txt`
   - Frontend: `frontend/package.json`
 - Uso real en codigo:
-  - Conteo de imports sobre archivos trackeados en git (`.py` y `.js`).
+  - revision de imports en frontend/backend y scripts ETL.
 - Nota: hay paquetes usados de forma indirecta (por ejemplo `jinja2` via FastAPI templates u `openpyxl` via `pandas.read_excel`) que pueden no aparecer con import explicito.
 
-## 2) Top bibliotecas por uso real
+## 2) Bibliotecas clave por capa
 
 ## 2.1 Frontend
 
-1. **next** (5 imports, 4 archivos)
+1. **next**
    - **Por que se usa**: framework principal del frontend.
    - **Aporte**:
      - enrutado por carpetas (`app/`),
      - rendering server/client segun pagina,
      - API route proxy (`frontend/src/app/api/backend/[...path]/route.js`).
 
-2. **react** (2 imports, 2 archivos)
+2. **react**
    - **Por que se usa**: capa de componentes y estado en vistas interactivas.
    - **Aporte**:
      - hooks (`useState`, `useEffect`, `useMemo`) para filtros y carga de datos,
      - composicion de UI para comparacion y exploracion.
 
-3. **leaflet + react-leaflet** (1+1 imports, 1 archivo)
+3. **leaflet + react-leaflet**
    - **Por que se usa**: visualizacion geoespacial de depositos.
    - **Aporte**:
      - render de mapa base OSM,
      - marcadores y tooltips para puntos de interes,
      - autoajuste de vista segun filtros.
 
-4. **recharts** (1 import, 1 archivo)
+4. **recharts**
    - **Por que se usa**: graficos comparativos del modulo de paises.
    - **Aporte**:
      - barras para PIB/depositos,
@@ -43,32 +43,32 @@ Este documento lista las bibliotecas mas usadas actualmente en el proyecto y su 
 
 ## 2.2 Backend y ETL (Python)
 
-1. **fastapi** (5 imports, 1 archivo)
+1. **fastapi**
    - **Por que se usa**: framework API principal.
    - **Aporte**:
      - endpoints REST para dashboard,
      - validacion de query params,
      - middleware CORS y respuestas HTML/API en el mismo servicio.
 
-2. **psycopg2** (3 imports, 2 archivos)
+2. **psycopg2**
    - **Por que se usa**: acceso a PostgreSQL/PostGIS.
    - **Aporte**:
      - conexiones y cursores SQL,
      - cargas batch eficientes (`execute_values`) en ETL.
 
-3. **pandas** (2 imports, 2 archivos)
+3. **pandas**
    - **Por que se usa**: transformacion tabular de datasets heterogeneos.
    - **Aporte**:
      - lectura CSV/XLSX/JSON,
      - limpieza, coercion y deduplicacion de datos en memoria.
 
-4. **requests** (2 imports, 2 archivos)
+4. **requests**
    - **Por que se usa**: descarga HTTP de fuentes externas.
    - **Aporte**:
      - streaming de archivos grandes,
      - retries con backoff para robustez de ingestion.
 
-5. **reverse_geocoder** (1 import, 1 archivo)
+5. **reverse_geocoder**
    - **Por que se usa**: inferencia geografica cuando faltan datos de ubicacion.
    - **Aporte**:
      - estimacion de pais/provincia desde coordenadas para mejorar cobertura de `mrds_location`.
@@ -87,6 +87,10 @@ Este documento lista las bibliotecas mas usadas actualmente en el proyecto y su 
   - No aparece como import principal porque se ejecuta como servidor ASGI desde comando.
   - Es runtime necesario para levantar el backend FastAPI.
 
+- **numpy**
+  - Se usa como dependencia de soporte para cálculos numéricos y operaciones ETL/analíticas.
+  - Contribuye a rendimiento en transformaciones tabulares junto a `pandas`.
+
 ## 4) Conclusiones
 
 - La base tecnica esta bien alineada con el problema:
@@ -94,5 +98,9 @@ Este documento lista las bibliotecas mas usadas actualmente en el proyecto y su 
   - `fastapi` para exponer datos analiticos,
   - `next/react` para experiencia de usuario,
   - `leaflet/recharts` para visualizacion.
+- El stack soporta adecuadamente:
+  - localizacion bilingue en frontend y backend,
+  - consultas geoespaciales con PostGIS,
+  - escenarios de alto volumen mediante paginacion y limites por pais.
 - No se observa sobre-ingenieria de dependencias: el stack es relativamente compacto y orientado al caso de uso del TFM.
 - La mejora principal no pasa por agregar mas librerias, sino por modularizar ETL y elevar cobertura de pruebas.

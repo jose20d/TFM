@@ -295,6 +295,24 @@ if not iso3:
 <YAxis type="number" dataKey="total_deposits" scale="log" domain={["auto", "auto"]} />
 ```
 
+### 6.12 Unificacion i18n visible y robustez de layout en Consultas/Analisis
+
+Durante la estabilizacion de UI bilingue se detectaron dos frentes:
+
+- mezcla parcial de idioma en textos visibles por cadenas hardcodeadas;
+- solapamiento de controles en `Consultas` por layout con offsets manuales (`translateX`) sensible a longitud de labels.
+
+Correcciones aplicadas:
+
+1. **Unificacion de textos visibles** en `Consultas` y `Analisis` para que todos respondan al idioma activo (`es/en`).
+2. **Refactor de grillas de formulario en `Consultas`**:
+   - eliminacion de offsets manuales por campo,
+   - grillas fluidas con `minmax(...)`,
+   - breakpoints coherentes para desktop/tablet/mobile.
+3. **Selectores de minerales con clave estable** (`value` fuente + `label` traducida) para evitar colisiones visuales por etiquetas duplicadas.
+
+Resultado: desaparicion de mezcla de idioma en UI visible y eliminacion de superposiciones de inputs/selects en modos `deposits`, `combined` y `spatial`.
+
 ## 7) Conclusion ejecutiva
 
 El codigo tiene una base funcional solida para ETL + analitica web, con buenas decisiones de trazabilidad e integracion geoespacial. El principal obstaculo no es funcional sino de mantenibilidad: la concentracion de complejidad en el ETL y la ausencia de pruebas automatizadas. Atacando esos dos frentes, el riesgo operativo baja de forma significativa.

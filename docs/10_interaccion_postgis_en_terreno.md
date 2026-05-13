@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS mrds_deposit (
 La pagina consume un endpoint dedicado:
 
 - `GET /api/v1/terrain/corridor`
-- parametros: `country_iso3`, `from_dep_id`, `to_dep_id`, `width_km`
+- parametros: `country_iso3`, `from_dep_id`, `to_dep_id`, `width_km`, `lang`
 
 Referencia: `web/app.py`
 
@@ -68,6 +68,7 @@ def api_terrain_corridor(
     from_dep_id: int = Query(..., ge=1),
     to_dep_id: int = Query(..., ge=1),
     width_km: float = Query(default=2, ge=1, le=50),
+    lang: str = Query(default="es"),
 ) -> dict:
     ...
 ```
@@ -79,6 +80,8 @@ Validaciones funcionales relevantes:
 - pais existente;
 - pais con al menos 2 depositos georreferenciados;
 - ambos extremos dentro del mismo pais y con coordenadas validas.
+
+Nota de serving: el endpoint retorna payload localizado mediante `lang=es/en` para mantener consistencia de idioma entre frontend y backend.
 
 ## 4) Operaciones PostGIS usadas en el corredor
 

@@ -60,6 +60,18 @@ Estas entidades permiten la trazabilidad, auditoría y control de ejecución del
 
 ---
 
+### 2.4 Capa conceptual de localización (i18n)
+
+El modelo conceptual incorpora una capa para traducción de términos de negocio:
+
+- **Catálogo de términos (`i18n_term_catalog`)**
+- **Traducciones por idioma (`i18n_term_translation`)**
+- **Serving materializado (`i18n_term_materialized`)**
+
+Esta capa conecta el dominio de datos con la experiencia bilingüe del frontend sin duplicar lógica de traducción por vista.
+
+---
+
 ## 3. Relaciones conceptuales
 
 El modelo conceptual establece las siguientes relaciones fundamentales:

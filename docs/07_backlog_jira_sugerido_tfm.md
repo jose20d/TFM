@@ -139,3 +139,29 @@ Documento de referencia con historias/tareas sugeridas para los epics del TFM.
 - Sprint siguiente: 6 historias (3 alta + 3 media).
 - Backlog inmediato: 5 historias.
 - Backlog de cierre TFM: 4 historias.
+
+## Historias adicionales (actualizacion reciente)
+
+### US-4.4 Consistencia i18n 100% en UI visible
+- Como usuario final, quiero que toda la interfaz mantenga un solo idioma activo sin mezclas.
+- Tareas:
+  - Auditoria de textos visibles por modulo.
+  - Eliminacion de literales hardcodeados en componentes.
+  - Validacion visual `es/en` en todas las pantallas principales.
+- Prioridad: Alta
+
+### US-4.5 Robustez de formularios bilingues en Consultas
+- Como usuario, quiero que los formularios no se superpongan al cambiar idioma o modo de consulta.
+- Tareas:
+  - Sustituir offsets manuales por grillas fluidas responsivas.
+  - Verificar coherencia visual por modo (`deposits`, `combined`, `spatial`, `profile`).
+  - Checklist de regresion visual en resoluciones desktop/tablet/mobile.
+- Prioridad: Alta
+
+### US-2.4 Escalado de Exploracion para paises de alto volumen
+- Como usuario, quiero explorar paises con muchos depositos (ej. USA) sin degradacion severa.
+- Tareas:
+  - Limites efectivos por pais.
+  - Paginacion backend en endpoint de depositos.
+  - Sincronizacion mapa-lista por pagina.
+- Prioridad: Alta

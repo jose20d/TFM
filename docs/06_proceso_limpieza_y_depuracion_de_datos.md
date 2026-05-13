@@ -321,3 +321,23 @@ ORDER BY total DESC, iso3;
 - Migrar reconciliacion geografica a `ST_Contains`/`ST_Intersects` con capas Admin0/Admin1 en PostGIS.
 - Guardar `NULL` semantico en BD y renderizar `N/A` solo en capa de presentacion.
 - Agregar reporte automatico de calidad por corrida ETL.
+
+## 12) Integracion i18n en pipeline de carga
+
+El flujo ETL actual incorpora una capa de localizacion de dominio:
+
+- semilla inicial versionada (`database/i18n_terms_seed.csv`),
+- catalogacion automatica de terminos detectados en tablas de negocio,
+- materializacion bilingue (`i18n_term_materialized`) para serving rapido en API.
+
+Esto evita hardcodes de traduccion en frontend y permite filtrar/mostrar datos en `es` y `en` con consistencia.
+
+## 13) Control de volumen en exploracion por pais
+
+Para escenarios de alta cardinalidad (ej. USA), el flujo operativo se completa con reglas de serving:
+
+- no retornar puntos en `Explorar` cuando no hay pais seleccionado,
+- aplicar limite efectivo por `country_iso3`,
+- usar paginacion (`limit` + `offset`) para evitar cargas masivas en una sola respuesta.
+
+Estas reglas protegen rendimiento y estabilidad sin alterar la calidad de datos ETL.
