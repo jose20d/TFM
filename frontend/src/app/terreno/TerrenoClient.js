@@ -166,6 +166,7 @@ export default function TerrenoClient() {
   const tr = useCallback((es, en) => (lang === "en" ? en : es), [lang]);
   const [activeTool, setActiveTool] = useState("corridor");
   const [countries, setCountries] = useState([]);
+  const [mineralLabelMap, setMineralLabelMap] = useState(new Map());
   const [countryIso, setCountryIso] = useState("");
   const [countryDeposits, setCountryDeposits] = useState([]);
   const [countryLoading, setCountryLoading] = useState(false);
@@ -216,13 +217,36 @@ export default function TerrenoClient() {
   );
 
   useEffect(() => {
-    fetch(withLang("/api/backend/api/v1/countries?limit=300", lang), { cache: "no-store" })
-      .then((response) => {
+    Promise.all([
+      fetch(withLang("/api/backend/api/v1/countries?limit=300", lang), { cache: "no-store" }).then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
+      }),
+      fetch(withLang("/api/backend/api/v1/minerals?limit=5000", lang), { cache: "no-store" }).then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }),
+    ])
+      .then(([countriesData, mineralsData]) => {
+        setCountries(Array.isArray(countriesData) ? countriesData : []);
+        const map = new Map();
+        if (Array.isArray(mineralsData)) {
+          mineralsData.forEach((item) => {
+            const source = String(item?.commod_source || item?.commod || "").trim();
+            const label = String(item?.commod || item?.commod_source || "").trim();
+            if (!source || !label) return;
+            const sourceKey = source.toLowerCase();
+            const labelKey = label.toLowerCase();
+            map.set(sourceKey, label);
+            map.set(labelKey, label);
+          });
+        }
+        setMineralLabelMap(map);
       })
-      .then((data) => setCountries(Array.isArray(data) ? data : []))
-      .catch(() => setCountries([]));
+      .catch(() => {
+        setCountries([]);
+        setMineralLabelMap(new Map());
+      });
   }, [lang]);
 
   const countryLabel = useMemo(() => {
@@ -241,6 +265,28 @@ export default function TerrenoClient() {
     const match = countries.find((country) => country.iso3 === potentialCountryIso);
     return match?.country_name || "";
   }, [countries, potentialCountryIso]);
+  const localizeMineral = useCallback(
+    (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return "N/A";
+      return mineralLabelMap.get(raw.toLowerCase()) || raw;
+    },
+    [mineralLabelMap],
+  );
+  const localizeMineralList = useCallback(
+    (values) => {
+      if (Array.isArray(values)) {
+        return values.map((item) => localizeMineral(item)).join(", ");
+      }
+      const raw = String(values || "").trim();
+      if (!raw) return "N/A";
+      return raw
+        .split(",")
+        .map((item) => localizeMineral(item))
+        .join(", ");
+    },
+    [localizeMineral],
+  );
 
   useEffect(() => {
     setCountryDeposits([]);
@@ -590,15 +636,21 @@ export default function TerrenoClient() {
     );
     return filtered;
   }, [potentialResult, potentialIntensity]);
+  const potentialMapHeatPoints = useMemo(() => {
+    // If no robust clusters are detected, keep showing observed points
+    // so users still see spatial evidence for the selected mineral.
+    if (potentialVisibleHeatPoints.length) return potentialVisibleHeatPoints;
+    return Array.isArray(potentialResult?.heat_points) ? potentialResult.heat_points : [];
+  }, [potentialVisibleHeatPoints, potentialResult]);
   const potentialMapPoints = useMemo(() => {
-    const points = potentialVisibleHeatPoints;
+    const points = potentialMapHeatPoints;
     if (points?.length) {
       return points
         .map((point) => [Number(point.lat), Number(point.lng)])
         .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
     }
     return [];
-  }, [potentialVisibleHeatPoints]);
+  }, [potentialMapHeatPoints]);
   const potentialHullFeatures = useMemo(() => {
     const clusters = Array.isArray(potentialResult?.clusters) ? potentialResult.clusters : [];
     const minHullClusterBySensitivity = {
@@ -916,7 +968,7 @@ export default function TerrenoClient() {
                             : "Fuera del corredor"}
                           <br />
                           Minerales:{" "}
-                          {inCorridor?.minerals?.length ? inCorridor.minerals.join(", ") : "N/A"}
+                          {inCorridor?.minerals?.length ? localizeMineralList(inCorridor.minerals) : "N/A"}
                           <br />
                           Intensidad: {inCorridor ? formatNumber(inCorridor.intensity_score, 2) : "N/A"}
                         </Tooltip>
@@ -959,7 +1011,7 @@ export default function TerrenoClient() {
                       <div className={styles.badgesRow}>
                         {corridorResult.common_endpoint_minerals.map((mineral) => (
                           <span key={`common-${mineral}`} className={styles.commonBadge}>
-                            {mineral}
+                            {localizeMineral(mineral)}
                           </span>
                         ))}
                       </div>
@@ -983,7 +1035,7 @@ export default function TerrenoClient() {
                       <ul className={styles.rankingList}>
                         {corridorResult.corridor_minerals.map((item) => (
                           <li key={`ranking-${item.mineral}`}>
-                            <span>{item.mineral}</span>
+                            <span>{localizeMineral(item.mineral)}</span>
                             <span>{formatNumber(item.count)} deps</span>
                             <span>{formatNumber(item.percentage, 2)}%</span>
                             <span className={styles[`intensity-${item.intensity}`]}>{item.intensity}</span>
@@ -1003,7 +1055,7 @@ export default function TerrenoClient() {
                           <li key={`corridor-dep-${deposit.dep_id}`}>
                             <strong
                               className="acronym-hint"
-                              data-tooltip={`Distancia: ${formatNumber(deposit.distance_to_axis_km, 2)} km | Intensidad: ${formatNumber(deposit.intensity_score, 2)} | Minerales: ${deposit.minerals?.length ? deposit.minerals.join(", ") : "N/A"}`}
+                              data-tooltip={`Distancia: ${formatNumber(deposit.distance_to_axis_km, 2)} km | Intensidad: ${formatNumber(deposit.intensity_score, 2)} | Minerales: ${deposit.minerals?.length ? localizeMineralList(deposit.minerals) : "N/A"}`}
                               tabIndex={0}
                             >
                               {deposit.name}
@@ -1011,7 +1063,7 @@ export default function TerrenoClient() {
                             -{" "}
                             {formatNumber(deposit.distance_to_axis_km, 2)} km al eje - Intensidad{" "}
                             {formatNumber(deposit.intensity_score, 2)} - Minerales:{" "}
-                            {deposit.minerals?.length ? deposit.minerals.join(", ") : "N/A"}
+                            {deposit.minerals?.length ? localizeMineralList(deposit.minerals) : "N/A"}
                           </li>
                         ))}
                       </ul>
@@ -1276,7 +1328,7 @@ export default function TerrenoClient() {
                       <ul className={styles.rankingList}>
                         {zoneResult.minerals.map((item) => (
                           <li key={`zone-ranking-${item.mineral}`}>
-                            <span>{item.mineral}</span>
+                            <span>{localizeMineral(item.mineral)}</span>
                             <span>{formatNumber(item.count)} deps</span>
                             <span>{formatNumber(item.percentage, 2)}%</span>
                             <span className={styles[`intensity-${item.intensity}`]}>{item.intensity}</span>
@@ -1296,7 +1348,7 @@ export default function TerrenoClient() {
                           <li key={`zone-result-${deposit.dep_id}`}>
                             <strong>{deposit.name}</strong> - {formatNumber(deposit.distance_km, 2)} km al
                             centro - Minerales:{" "}
-                            {deposit.minerals?.length ? deposit.minerals.join(", ") : "N/A"}
+                            {deposit.minerals?.length ? localizeMineralList(deposit.minerals) : "N/A"}
                           </li>
                         ))}
                       </ul>
@@ -1335,7 +1387,7 @@ export default function TerrenoClient() {
                 <option value="">Todos los minerales</option>
                 {(freqResult?.available_minerals || []).map((item) => (
                   <option key={`min-opt-${item.mineral}`} value={item.mineral}>
-                    {item.mineral}
+                    {localizeMineral(item.mineral)}
                   </option>
                 ))}
               </select>
@@ -1400,7 +1452,7 @@ export default function TerrenoClient() {
                         <Tooltip direction="top" offset={[0, -2]}>
                           <strong>{point.dep_name}</strong>
                           <br />
-                          Mineral dominante: {point.mineral || "N/A"}
+                          Mineral dominante: {localizeMineral(point.mineral)}
                           <br />
                           Intensidad: {formatNumber((Number(point.weight) || 0) * 100, 0)}%
                         </Tooltip>
@@ -1428,7 +1480,7 @@ export default function TerrenoClient() {
                 </div>
                 <div>
                   <strong>Mineral foco</strong>
-                  <p>{freqResult?.coexistence_focus_mineral || "N/A"}</p>
+                  <p>{localizeMineral(freqResult?.coexistence_focus_mineral)}</p>
                 </div>
               </div>
 
@@ -1448,7 +1500,7 @@ export default function TerrenoClient() {
                     {(freqResult?.minerals || []).map((item) => (
                       <li key={`freq-rank-${item.mineral}`}>
                         <div className={styles.rankingBarsHead}>
-                          <span>{item.mineral}</span>
+                          <span>{localizeMineral(item.mineral)}</span>
                           <span>{formatNumber(item.percentage, 1)}%</span>
                         </div>
                         <div className={styles.mineralBarTrack}>
@@ -1474,14 +1526,14 @@ export default function TerrenoClient() {
                 <h5>Coexistencia mineralogica</h5>
                 <p className="muted">
                   {freqResult?.coexistence_focus_mineral
-                    ? `${freqResult.coexistence_focus_mineral} suele aparecer junto con:`
+                    ? `${localizeMineral(freqResult.coexistence_focus_mineral)} suele aparecer junto con:`
                     : "Selecciona un mineral para profundizar coexistencia."}
                 </p>
                 {(freqResult?.coexistence || []).length ? (
                   <ul className={styles.simpleList}>
                     {freqResult.coexistence.map((item) => (
                       <li key={`coexist-${item.mineral}`}>
-                        {item.mineral} ({formatNumber(item.count)})
+                        {localizeMineral(item.mineral)} ({formatNumber(item.count)})
                       </li>
                     ))}
                   </ul>
@@ -1496,7 +1548,7 @@ export default function TerrenoClient() {
                   <ul className={styles.simpleList}>
                     {(freqResult?.top_regions || []).map((region) => (
                       <li key={`region-${region.region}`}>
-                        {region.region} - {region.dominant_mineral} ({formatNumber(region.deposit_count)} dep)
+                        {region.region} - {localizeMineral(region.dominant_mineral)} ({formatNumber(region.deposit_count)} dep)
                       </li>
                     ))}
                   </ul>
@@ -1534,7 +1586,7 @@ export default function TerrenoClient() {
               <option value="">Seleccionar mineral</option>
               {potentialMineralOptions.map((option) => (
                 <option key={`pot-min-${option}`} value={option}>
-                  {option}
+                  {localizeMineral(option)}
                 </option>
               ))}
             </select>
@@ -1565,7 +1617,7 @@ export default function TerrenoClient() {
           potentialVisibleHeatPoints.length === 0 && (
             <p className="muted">
               Con esta sensibilidad no se detectaron agrupaciones robustas. Prueba con sensibilidad media o
-              baja.
+              baja. Se muestran igualmente los puntos observados para mantener contexto espacial.
             </p>
           )}
 
@@ -1608,7 +1660,7 @@ export default function TerrenoClient() {
                     })}
                   />
                 ))}
-                {potentialVisibleHeatPoints.map((point, index) => {
+                {potentialMapHeatPoints.map((point, index) => {
                   const markerStyle = markerStyleForWeight(Number(point.weight || 0));
                   return (
                     <CircleMarker
@@ -1620,7 +1672,7 @@ export default function TerrenoClient() {
                       <Tooltip direction="top" offset={[0, -2]}>
                         <strong>{point.dep_name}</strong>
                         <br />
-                        Mineral: {point.mineral}
+                        Mineral: {localizeMineral(point.mineral)}
                         <br />
                         Zona: {point.region || "N/A"}
                         <br />
@@ -1649,7 +1701,7 @@ export default function TerrenoClient() {
               </div>
               <div>
                 <strong>Mineral objetivo</strong>
-                <p>{potentialResult?.mineral || potentialMineral || "N/A"}</p>
+                <p>{localizeMineral(potentialResult?.mineral || potentialMineral)}</p>
               </div>
               <div>
                 <strong>Depositos analizados</strong>

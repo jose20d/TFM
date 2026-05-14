@@ -81,11 +81,13 @@
 .fieldSpatialBase,
 .fieldSpatialRadius,
 .fieldSpatialMineral,
-.fieldSpatialLimit {
+.fieldSpatialLimit,
+.fieldProfileLimit {
   display: grid;
   gap: 0.35rem;
 }
 
+.filtersGrid > label,
 .filtersGridDeposits > label,
 .filtersGridCombined > label,
 .filtersGridSpatial > label {
@@ -190,6 +192,11 @@
   color: rgba(171, 196, 220, 0.82);
   font-size: 0.75rem;
   line-height: 1.2;
+}
+
+.inputHintPlaceholder {
+  visibility: hidden;
+  user-select: none;
 }
 
 .tableWrap {
