@@ -38,6 +38,7 @@ function InfoHint({ text, label }) {
 
 export default function ExploreClient() {
   const lang = useLang();
+  const tr = (es, en) => (lang === "en" ? en : es);
   const [isHydrated, setIsHydrated] = useState(false);
   const [countries, setCountries] = useState([]);
   const [minerals, setMinerals] = useState([]);
@@ -185,10 +186,11 @@ export default function ExploreClient() {
     return () => controller.abort();
   }, [filters, page, lang, buildExploreParams]);
 
-  const selectedCountryLabel = countries.find((country) => country.iso3 === filters.countryIso)?.country_name || "Todos";
+  const selectedCountryLabel =
+    countries.find((country) => country.iso3 === filters.countryIso)?.country_name || tr("Todos", "All");
   const selectedMineralLabel = useMemo(() => {
     const value = filters.mineral.trim();
-    if (!value) return lang === "en" ? "All" : "Todos";
+    if (!value) return tr("Todos", "All");
     const selected = minerals.find((item) => item.value === value);
     return selected?.label || value;
   }, [filters.mineral, minerals, lang]);
@@ -250,7 +252,10 @@ export default function ExploreClient() {
             <select
               value={limitInput}
               onChange={(e) => setLimitInput(Number(e.target.value) || DEFAULT_LIMIT)}
-              aria-label="Limite visual utilizado para mantener rendimiento y claridad del mapa."
+              aria-label={tr(
+                "Limite visual utilizado para mantener rendimiento y claridad del mapa.",
+                "Visual limit used to keep map performance and readability.",
+              )}
             >
               {!isHydrated ? (
                 <option value={DEFAULT_LIMIT}>
@@ -288,7 +293,7 @@ export default function ExploreClient() {
           </div>
           <p className="muted">
             <InfoHint
-              label="Limite de puntos"
+              label={tr("Limite de puntos", "Point limit")}
               text={
                 lang === "en"
                   ? "Visual limit used to keep map performance and readability."

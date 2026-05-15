@@ -153,6 +153,7 @@ function resolveCountrySelection(rawTerm, countries, fallbackIso3) {
 export default async function Home({ searchParams }) {
   const params = await searchParams;
   const lang = normalizeLang(params?.lang);
+  const tr = (es, en) => (lang === "en" ? en : es);
   const [countries, defaults] = await Promise.all([
     readJson(withLang("/api/v1/countries?limit=300", lang), []),
     readJson("/api/v1/home/defaults", {}),
@@ -195,7 +196,7 @@ export default async function Home({ searchParams }) {
             <div className="hero-image">
               <Image
                 src="/images/hero/planet_crop.png"
-                alt="Planeta de contexto global"
+                alt={tr("Planeta de contexto global", "Planet with global context")}
                 fill
                 sizes="(max-width: 720px) 100vw, 1240px"
                 priority
@@ -206,7 +207,7 @@ export default async function Home({ searchParams }) {
               <article className="kpi-card">
                 <p className="kpi-label">
                   <InfoHint
-                    label="Paises analizados"
+                    label={tr("Paises analizados", "Countries analyzed")}
                     text={
                       lang === "en"
                         ? "Number of countries with integrated geological and contextual records."
@@ -219,7 +220,7 @@ export default async function Home({ searchParams }) {
               <article className="kpi-card">
                 <p className="kpi-label">
                   <InfoHint
-                    label="Depositos minerales"
+                    label={tr("Depositos minerales", "Mineral deposits")}
                     text={
                       lang === "en"
                         ? "Total mineral deposit records integrated into the platform."
@@ -236,7 +237,7 @@ export default async function Home({ searchParams }) {
               <article className="kpi-card">
                 <p className="kpi-label">
                   <InfoHint
-                    label="Prom. IPC"
+                    label={tr("Prom. IPC", "Avg. CPI")}
                     text={
                       lang === "en"
                         ? "Average Corruption Perception Index (CPI). Higher values indicate lower perceived corruption."
@@ -249,7 +250,7 @@ export default async function Home({ searchParams }) {
               <article className="kpi-card">
                 <p className="kpi-label">
                   <InfoHint
-                    label="Prom. EFI"
+                    label={tr("Prom. EFI", "Avg. FSI")}
                     text={
                       lang === "en"
                         ? "State Fragility Index. Higher values represent higher institutional fragility."
@@ -271,7 +272,7 @@ export default async function Home({ searchParams }) {
                 <li key={`${item.country_name}-${item.iso3}`}>
                   <strong>{item.country_name}</strong> ({item.iso3 || "N/A"}) -{" "}
                   <span className="numeric-value">{formatInteger(item.total_deposits)}</span>{" "}
-                  {lang === "en" ? "deposits" : "depositos"}
+                  {tr("depositos", "deposits")}
                 </li>
               ))}
             </ul>
@@ -293,7 +294,7 @@ export default async function Home({ searchParams }) {
           <article className="panel">
             <h2>{t(lang, "homeProfile")}</h2>
             <p className="muted">
-              {lang === "en" ? "Search by name, ISO2 or ISO3." : "Busca por nombre, ISO2 o ISO3."}
+              {tr("Busca por nombre, ISO2 o ISO3.", "Search by name, ISO2 or ISO3.")}
             </p>
             <form className="country-form" method="get">
               <input type="hidden" name="lang" value={lang} />
@@ -301,7 +302,7 @@ export default async function Home({ searchParams }) {
                 name="pais"
                 list="countries-options"
                 defaultValue={selected.label}
-                placeholder={lang === "en" ? "Example: Costa Rica, CR or CRI" : "Ejemplo: Costa Rica, CR o CRI"}
+                placeholder={tr("Ejemplo: Costa Rica, CR o CRI", "Example: Costa Rica, CR or CRI")}
               />
               <button type="submit">{t(lang, "homeLoad")}</button>
             </form>
@@ -312,13 +313,16 @@ export default async function Home({ searchParams }) {
             </datalist>
             {!dataHealth.db && (
               <p className="muted">
-                No hay conexion a base de datos. Revisa variables DB_* en la terminal del backend.
+                {tr(
+                  "No hay conexion a base de datos. Revisa variables DB_* en la terminal del backend.",
+                  "No database connection. Check DB_* variables in the backend terminal.",
+                )}
               </p>
             )}
 
             <div className="summary-grid">
               <div className="summary-item">
-                <h3>{lang === "en" ? "Country" : "Pais"}</h3>
+                <h3>{tr("Pais", "Country")}</h3>
                 <p>{country.country_name || "N/A"}</p>
               </div>
               <div className="summary-item">
@@ -326,19 +330,19 @@ export default async function Home({ searchParams }) {
                 <p>{country.iso3 || iso3}</p>
               </div>
               <div className="summary-item">
-                <h3>{lang === "en" ? "Deposits" : "Depositos"}</h3>
+                <h3>{tr("Depositos", "Deposits")}</h3>
                 <p className="numeric-value">{formatInteger(country.deposits_count)}</p>
               </div>
               <div className="summary-item">
-                <h3>PIB</h3>
+                <h3>{tr("PIB", "GDP")}</h3>
                 <p className="numeric-value">{formatBillions(country.gdp)}</p>
               </div>
               <div className="summary-item">
-                <h3>{lang === "en" ? "Corruption Index" : "Indice de corrupcion"}</h3>
+                <h3>{tr("Indice de corrupcion", "Corruption Index")}</h3>
                 <p className="numeric-value">{formatNumber(country.cpi)}</p>
               </div>
               <div className="summary-item">
-                <h3>{lang === "en" ? "Fragility Index" : "Indice de fragilidad"}</h3>
+                <h3>{tr("Indice de fragilidad", "Fragility Index")}</h3>
                 <p className="numeric-value">{formatNumber(country.fsi)}</p>
               </div>
             </div>
@@ -347,7 +351,7 @@ export default async function Home({ searchParams }) {
           <article className="panel">
             <h2>
               <InfoHint
-                label="Top minerales"
+                label={tr("Top minerales", "Top minerals")}
                 text={
                   lang === "en"
                     ? "Mineral registered across multiple integrated deposits."

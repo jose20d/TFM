@@ -91,7 +91,8 @@ function InfoHint({ text }) {
   );
 }
 
-function CountryRadialCard({ row, maxDeposits }) {
+function CountryRadialCard({ row, maxDeposits, lang }) {
+  const tr = (es, en) => (lang === "en" ? en : es);
   const countryIso = row.iso3 || row.iso2 || "N/A";
   const cpiRaw = toNumeric(row.cpi);
   const fsiRaw = toNumeric(row.fsi);
@@ -104,15 +105,20 @@ function CountryRadialCard({ row, maxDeposits }) {
   const radialData = [
     { metric: "IPC", value: cpiPct, color: "#14b86a", raw: cpiRaw, suffix: "/100" },
     { metric: "EFI", value: fsiPct, color: "#d98a24", raw: fsiRaw, suffix: "/180" },
-    { metric: "Depositos", value: depositsPct, color: "#2e86ff", raw: depositsRaw, suffix: "" },
+    { metric: tr("Depositos", "Deposits"), value: depositsPct, color: "#2e86ff", raw: depositsRaw, suffix: "" },
   ];
 
   return (
     <article className="panel radial-country-card">
       <h4>
-        {row.country_name || "Pais"} ({countryIso})
+        {row.country_name || tr("Pais", "Country")} ({countryIso})
         {" "}
-        <InfoHint text="Resumen visual comparativo de indicadores seleccionados." />
+        <InfoHint
+          text={tr(
+            "Resumen visual comparativo de indicadores seleccionados.",
+            "Comparative visual summary of selected indicators.",
+          )}
+        />
       </h4>
       <div className="radial-chart-wrap">
         <ResponsiveContainer width="100%" height={130}>
@@ -150,6 +156,7 @@ function CountryRadialCard({ row, maxDeposits }) {
 
 export default function CompareClient() {
   const lang = useLang();
+  const tr = (es, en) => (lang === "en" ? en : es);
   const [countries, setCountries] = useState([]);
   const [selectedIso, setSelectedIso] = useState([]);
   const [rows, setRows] = useState([]);
@@ -375,7 +382,10 @@ export default function CompareClient() {
           <p className="muted">{t(lang, "compareHint")}</p>
           {!dbUp && (
             <p className="muted">
-              No hay conexion a base de datos. Revisa variables DB_* en la terminal del backend.
+              {tr(
+                "No hay conexion a base de datos. Revisa variables DB_* en la terminal del backend.",
+                "No database connection. Check DB_* variables in the backend terminal.",
+              )}
             </p>
           )}
 
@@ -421,7 +431,7 @@ export default function CompareClient() {
             <div className="acronym-guide-row">
               <div className="acronym-guide acronym-guide-inline">
                 <span className="acronym-guide-title">
-                  {lang === "en" ? "Acronym guide" : "Guia de acronimos"}
+                  {tr("Guia de acronimos", "Acronym guide")}
                 </span>
                 <div className="acronym-guide-chips">
                   {acronymLegend.map((item) => (
@@ -470,7 +480,7 @@ export default function CompareClient() {
           {selectedIso.length < 2 && (
             <p className="muted">{t(lang, "compareRunHint")}</p>
           )}
-          {error && <p className="muted">Error: {error}</p>}
+          {error && <p className="muted">{tr("Error", "Error")}: {error}</p>}
 
           {visibleRows.length > 0 && (
             <div className="compare-layout">
@@ -611,6 +621,7 @@ export default function CompareClient() {
                       key={`radial-${row.iso3 || row.country_name}`}
                       row={row}
                       maxDeposits={maxDepositsForRadial}
+                      lang={lang}
                     />
                   ))}
                 </div>
@@ -619,8 +630,8 @@ export default function CompareClient() {
               <div className="charts-side">
                 <div className="panel chart-panel">
                   <h3>
-                    {`Comparacion PIB (${NUMERIC_FORMAT.gdpUnitLabel})`}{" "}
-                    <InfoHint text="Valores exactos disponibles al pasar el cursor sobre cada barra." />
+                    {`${tr("Comparacion PIB", "GDP comparison")} (${NUMERIC_FORMAT.gdpUnitLabel})`}{" "}
+                    <InfoHint text={tr("Valores exactos disponibles al pasar el cursor sobre cada barra.", "Exact values are available when hovering each bar.")} />
                   </h3>
                   <ResponsiveContainer width="100%" height={150}>
                     <BarChart data={gdpChartData}>
@@ -639,8 +650,8 @@ export default function CompareClient() {
                 </div>
                 <div className="panel chart-panel">
                   <h3>
-                    {lang === "en" ? "Deposits by country" : "Depositos por pais"}{" "}
-                    <InfoHint text="Valores exactos disponibles al pasar el cursor sobre cada barra." />
+                    {tr("Depositos por pais", "Deposits by country")}{" "}
+                    <InfoHint text={tr("Valores exactos disponibles al pasar el cursor sobre cada barra.", "Exact values are available when hovering each bar.")} />
                   </h3>
                   <ResponsiveContainer width="100%" height={140}>
                     <BarChart data={depositsChartData}>

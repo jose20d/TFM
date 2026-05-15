@@ -541,15 +541,15 @@ export default function TerrenoClient() {
 
   const analyzeCorridor = useCallback(async () => {
     if (!countryIso) {
-      setAnalysisError("Selecciona un pais para iniciar el analisis de corredor.");
+      setAnalysisError(tr("Selecciona un pais para iniciar el analisis de corredor.", "Select a country to start corridor analysis."));
       return;
     }
     if (!selectedFromId || !selectedToId) {
-      setAnalysisError("Selecciona dos depositos distintos sobre el mapa.");
+      setAnalysisError(tr("Selecciona dos depositos distintos sobre el mapa.", "Select two different deposits on the map."));
       return;
     }
     if (selectedFromId === selectedToId) {
-      setAnalysisError("Deposito A y Deposito B no pueden ser el mismo.");
+      setAnalysisError(tr("Deposito A y Deposito B no pueden ser el mismo.", "Deposit A and Deposit B cannot be the same."));
       return;
     }
 
@@ -756,11 +756,11 @@ export default function TerrenoClient() {
 
   const analyzeZone = useCallback(async () => {
     if (!zoneCountryIso) {
-      setZoneAnalysisError("Selecciona un pais para comenzar la exploracion.");
+      setZoneAnalysisError(tr("Selecciona un pais para comenzar la exploracion.", "Select a country to start exploration."));
       return;
     }
     if (!zoneCenter) {
-      setZoneAnalysisError("Selecciona una zona haciendo clic en el mapa.");
+      setZoneAnalysisError(tr("Selecciona una zona haciendo clic en el mapa.", "Select a zone by clicking on the map."));
       return;
     }
 
@@ -810,18 +810,20 @@ export default function TerrenoClient() {
         <>
           <div className={styles.corridorIntroRow}>
             <p className="muted">
-              Selecciona pais y dos depositos (A/B). El sistema analiza automaticamente los depositos y
-              minerales dentro del corredor.
+              {tr(
+                "Selecciona pais y dos depositos (A/B). El sistema analiza automaticamente los depositos y minerales dentro del corredor.",
+                "Select a country and two deposits (A/B). The system automatically analyzes deposits and minerals within the corridor.",
+              )}
             </p>
             <button type="button" className={styles.secondaryBtn} onClick={clearSelection}>
-              Limpiar seleccion
+              {tr("Limpiar seleccion", "Clear selection")}
             </button>
           </div>
           <div className={styles.controls}>
             <label>
-              Pais
+              {tr("Pais", "Country")}
               <select value={countryIso} onChange={(event) => setCountryIso(event.target.value)}>
-                <option value="">Seleccionar pais</option>
+                <option value="">{tr("Seleccionar pais", "Select country")}</option>
                 {countries.map((country) => (
                   <option key={`${country.country_name}-${country.iso3}`} value={country.iso3 || ""}>
                     {country.country_name} ({country.iso3 || "N/A"})
@@ -830,7 +832,7 @@ export default function TerrenoClient() {
               </select>
             </label>
             <label>
-              Ancho del corredor (km)
+              {tr("Ancho del corredor (km)", "Corridor width (km)")}
               <input
                 type="range"
                 min={1}
@@ -845,41 +847,47 @@ export default function TerrenoClient() {
           </div>
           <p className="muted">
             <InfoHint
-              label="Intensidad mineralogica"
-              text="La intensidad refleja frecuencia relativa del mineral dentro del corredor analizado."
+              label={tr("Intensidad mineralogica", "Mineralogical intensity")}
+              text={tr(
+                "La intensidad refleja frecuencia relativa del mineral dentro del corredor analizado.",
+                "Intensity reflects the relative mineral frequency within the analyzed corridor.",
+              )}
             />
           </p>
 
           <div className={styles.selectionInfo}>
             <p>
-              <strong>Pais:</strong> {countryLabel || "Sin seleccionar"}
+              <strong>{tr("Pais:", "Country:")}</strong> {countryLabel || tr("Sin seleccionar", "Not selected")}
             </p>
             <p>
-              <strong>Deposito A:</strong> {selectedFrom?.name || "Haz clic en un marcador"}
+              <strong>{tr("Deposito A:", "Deposit A:")}</strong> {selectedFrom?.name || tr("Haz clic en un marcador", "Click a marker")}
             </p>
             <p>
-              <strong>Deposito B:</strong> {selectedTo?.name || "Haz clic en otro marcador"}
+              <strong>{tr("Deposito B:", "Deposit B:")}</strong> {selectedTo?.name || tr("Haz clic en otro marcador", "Click another marker")}
             </p>
-            <p className="muted">Los depositos A y B solo definen los extremos del corredor.</p>
+            <p className="muted">{tr("Los depositos A y B solo definen los extremos del corredor.", "Deposits A and B only define the corridor endpoints.")}</p>
           </div>
 
           {(countryError || analysisError) && (
             <div className={styles.messageBox}>{countryError || analysisError}</div>
           )}
-          {countryLoading && <p className="muted">Cargando depositos georreferenciados...</p>}
+          {countryLoading && <p className="muted">{tr("Cargando depositos georreferenciados...", "Loading georeferenced deposits...")}</p>}
           {!countryLoading && analysisLoading && (
-            <p className="muted">Analizando corredor automaticamente...</p>
+            <p className="muted">{tr("Analizando corredor automaticamente...", "Analyzing corridor automatically...")}</p>
           )}
           {!countryLoading && countryIso && !countryDeposits.length && !countryError && (
-            <p className="muted">No hay depositos georreferenciados para este pais.</p>
+            <p className="muted">{tr("No hay depositos georreferenciados para este pais.", "There are no georeferenced deposits for this country.")}</p>
           )}
 
           <div className={styles.corridorLayout}>
             <article className={styles.mapCard}>
               <h4>
                 <InfoHint
-                  label="Mapa del corredor"
-                  text="Area de influencia espacial calculada entre los depositos seleccionados."
+                  label={tr("Mapa del corredor", "Corridor map")}
+                  text={tr(
+                    "Area de influencia espacial calculada entre los depositos seleccionados.",
+                    "Spatial influence area calculated between selected deposits.",
+                  )}
                 />
               </h4>
               <div className={styles.mapWrap}>
@@ -964,13 +972,13 @@ export default function TerrenoClient() {
                           <strong>{deposit.name}</strong>
                           <br />
                           {inCorridor
-                            ? `Distancia al eje: ${formatNumber(inCorridor.distance_to_axis_km, 2)} km`
-                            : "Fuera del corredor"}
+                            ? `${tr("Distancia al eje", "Distance to axis")}: ${formatNumber(inCorridor.distance_to_axis_km, 2)} km`
+                            : tr("Fuera del corredor", "Outside corridor")}
                           <br />
-                          Minerales:{" "}
+                          {tr("Minerales", "Minerals")}:{" "}
                           {inCorridor?.minerals?.length ? localizeMineralList(inCorridor.minerals) : "N/A"}
                           <br />
-                          Intensidad: {inCorridor ? formatNumber(inCorridor.intensity_score, 2) : "N/A"}
+                          {tr("Intensidad", "Intensity")}: {inCorridor ? formatNumber(inCorridor.intensity_score, 2) : "N/A"}
                         </Tooltip>
                       </CircleMarker>
                     );
@@ -978,35 +986,37 @@ export default function TerrenoClient() {
                 </MapContainer>
               </div>
               <p className="muted">
-                Este analisis se basa en ocurrencias registradas y proximidad espacial. No garantiza la
-                presencia de minerales en campo.
+                {tr(
+                  "Este analisis se basa en ocurrencias registradas y proximidad espacial. No garantiza la presencia de minerales en campo.",
+                  "This analysis is based on registered occurrences and spatial proximity. It does not guarantee mineral presence in the field.",
+                )}
               </p>
             </article>
 
             <article className={styles.resultsCard}>
-              <h4>Resumen mineralogico del corredor</h4>
+              <h4>{tr("Resumen mineralogico del corredor", "Corridor mineralogical summary")}</h4>
               {!corridorResult && (
-                <p className="muted">Selecciona dos depositos para ejecutar el analisis automaticamente.</p>
+                <p className="muted">{tr("Selecciona dos depositos para ejecutar el analisis automaticamente.", "Select two deposits to run the analysis automatically.")}</p>
               )}
               {corridorResult && (
                 <>
                   <div className={styles.kpisGrid}>
                     <div>
-                      <strong>Distancia A-B</strong>
+                      <strong>{tr("Distancia A-B", "A-B distance")}</strong>
                       <p>{formatNumber(corridorResult.distance_km, 2)} km</p>
                     </div>
                     <div>
-                      <strong>Ancho del corredor</strong>
+                      <strong>{tr("Ancho del corredor", "Corridor width")}</strong>
                       <p>{formatNumber(corridorResult.width_km, 0)} km</p>
                     </div>
                     <div>
-                      <strong>Depositos en corredor</strong>
+                      <strong>{tr("Depositos en corredor", "Deposits in corridor")}</strong>
                       <p>{formatNumber(corridorResult.deposit_count)}</p>
                     </div>
                   </div>
 
                   <section className={styles.resultSection}>
-                    <h5>Minerales comunes entre A y B (dato adicional)</h5>
+                    <h5>{tr("Minerales comunes entre A y B (dato adicional)", "Common minerals between A and B (additional data)")}</h5>
                     {corridorResult.common_endpoint_minerals?.length ? (
                       <div className={styles.badgesRow}>
                         {corridorResult.common_endpoint_minerals.map((mineral) => (
@@ -1016,53 +1026,58 @@ export default function TerrenoClient() {
                         ))}
                       </div>
                     ) : (
-                      <p className="muted">No se detectaron minerales comunes entre los extremos.</p>
+                      <p className="muted">{tr("No se detectaron minerales comunes entre los extremos.", "No common minerals were detected between endpoints.")}</p>
                     )}
                   </section>
 
                   <section className={styles.resultSection}>
                     <h5>
                       <InfoHint
-                        label="Ranking de minerales del corredor"
-                        text="La intensidad refleja frecuencia relativa del mineral dentro del corredor analizado."
+                        label={tr("Ranking de minerales del corredor", "Corridor mineral ranking")}
+                        text={tr(
+                          "La intensidad refleja frecuencia relativa del mineral dentro del corredor analizado.",
+                          "Intensity reflects the relative mineral frequency within the analyzed corridor.",
+                        )}
                       />
                     </h5>
                     <p className="muted">
-                      La intensidad se calcula segun la frecuencia del mineral dentro de los depositos
-                      encontrados en el corredor.
+                      {tr(
+                        "La intensidad se calcula segun la frecuencia del mineral dentro de los depositos encontrados en el corredor.",
+                        "Intensity is calculated according to mineral frequency within deposits found in the corridor.",
+                      )}
                     </p>
                     {corridorResult.corridor_minerals?.length ? (
                       <ul className={styles.rankingList}>
                         {corridorResult.corridor_minerals.map((item) => (
                           <li key={`ranking-${item.mineral}`}>
                             <span>{localizeMineral(item.mineral)}</span>
-                            <span>{formatNumber(item.count)} deps</span>
+                            <span>{formatNumber(item.count)} {tr("dep", "dep")}</span>
                             <span>{formatNumber(item.percentage, 2)}%</span>
                             <span className={styles[`intensity-${item.intensity}`]}>{item.intensity}</span>
                           </li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="muted">No se detectaron minerales en el corredor.</p>
+                      <p className="muted">{tr("No se detectaron minerales en el corredor.", "No minerals were detected in the corridor.")}</p>
                     )}
                   </section>
 
                   <section className={styles.resultSection}>
-                    <h5>Depositos dentro del corredor</h5>
+                    <h5>{tr("Depositos dentro del corredor", "Deposits within the corridor")}</h5>
                     <div className={styles.depositsScroll}>
                       <ul className={styles.depositsList}>
                         {corridorResult.deposits_in_corridor?.map((deposit) => (
                           <li key={`corridor-dep-${deposit.dep_id}`}>
                             <strong
                               className="acronym-hint"
-                              data-tooltip={`Distancia: ${formatNumber(deposit.distance_to_axis_km, 2)} km | Intensidad: ${formatNumber(deposit.intensity_score, 2)} | Minerales: ${deposit.minerals?.length ? localizeMineralList(deposit.minerals) : "N/A"}`}
+                              data-tooltip={`${tr("Distancia", "Distance")}: ${formatNumber(deposit.distance_to_axis_km, 2)} km | ${tr("Intensidad", "Intensity")}: ${formatNumber(deposit.intensity_score, 2)} | ${tr("Minerales", "Minerals")}: ${deposit.minerals?.length ? localizeMineralList(deposit.minerals) : "N/A"}`}
                               tabIndex={0}
                             >
                               {deposit.name}
                             </strong>{" "}
                             -{" "}
-                            {formatNumber(deposit.distance_to_axis_km, 2)} km al eje - Intensidad{" "}
-                            {formatNumber(deposit.intensity_score, 2)} - Minerales:{" "}
+                            {formatNumber(deposit.distance_to_axis_km, 2)} km {tr("al eje", "to axis")} - {tr("Intensidad", "Intensity")}{" "}
+                            {formatNumber(deposit.intensity_score, 2)} - {tr("Minerales", "Minerals")}:{" "}
                             {deposit.minerals?.length ? localizeMineralList(deposit.minerals) : "N/A"}
                           </li>
                         ))}
@@ -1083,17 +1098,20 @@ export default function TerrenoClient() {
         <>
           <div className={styles.zoneIntroRow}>
             <p className="muted">
-              Selecciona pais y luego haz clic en el mapa para definir el centro de la zona de interes.
+              {tr(
+                "Selecciona pais y luego haz clic en el mapa para definir el centro de la zona de interes.",
+                "Select a country and then click on the map to define the center of the area of interest.",
+              )}
             </p>
             <button type="button" className={styles.secondaryBtn} onClick={clearZone}>
-              Limpiar zona
+              {tr("Limpiar zona", "Clear area")}
             </button>
           </div>
           <div className={styles.controls}>
             <label>
-              Pais
+              {tr("Pais", "Country")}
               <select value={zoneCountryIso} onChange={(event) => setZoneCountryIso(event.target.value)}>
-                <option value="">Seleccionar pais</option>
+                <option value="">{tr("Seleccionar pais", "Select country")}</option>
                 {countries.map((country) => (
                   <option key={`zone-${country.country_name}-${country.iso3}`} value={country.iso3 || ""}>
                     {country.country_name} ({country.iso3 || "N/A"})
@@ -1102,7 +1120,7 @@ export default function TerrenoClient() {
               </select>
             </label>
             <label>
-              Radio de busqueda (km)
+              {tr("Radio de busqueda (km)", "Search radius (km)")}
               <input
                 type="range"
                 min={1}
@@ -1112,25 +1130,25 @@ export default function TerrenoClient() {
                 disabled={!zoneCountryIso}
                 onChange={(event) => setZoneRadiusKm(Number(event.target.value) || 10)}
               />
-              <span className={styles.rangeValue}>Radio actual: {formatNumber(zoneRadiusKm)} km</span>
+              <span className={styles.rangeValue}>{tr("Radio actual", "Current radius")}: {formatNumber(zoneRadiusKm)} km</span>
             </label>
           </div>
           <p className="muted">
             <InfoHint
-              label="Radio de busqueda"
-              text="Radio espacial utilizado para buscar depositos cercanos."
+              label={tr("Radio de busqueda", "Search radius")}
+              text={tr("Radio espacial utilizado para buscar depositos cercanos.", "Spatial radius used to search nearby deposits.")}
             />
           </p>
 
           <div className={styles.selectionInfo}>
             <p>
-              <strong>Pais:</strong> {zoneCountryLabel || "Sin seleccionar"}
+              <strong>{tr("Pais:", "Country:")}</strong> {zoneCountryLabel || tr("Sin seleccionar", "Not selected")}
             </p>
             <p>
-              <strong>Centro de zona:</strong>{" "}
+              <strong>{tr("Centro de zona:", "Area center:")}</strong>{" "}
               {zoneCenter
                 ? `${formatNumber(zoneCenter.lat, 4)}, ${formatNumber(zoneCenter.lng, 4)}`
-                : "Haz clic en el mapa para seleccionar un punto"}
+                : tr("Haz clic en el mapa para seleccionar un punto", "Click on the map to select a point")}
             </p>
           </div>
 
@@ -1138,19 +1156,19 @@ export default function TerrenoClient() {
             <div className={styles.messageBox}>{zoneCountryError || zoneAnalysisError}</div>
           )}
           {!zoneCountryIso && (
-            <p className="muted">Selecciona un pais para comenzar la exploracion.</p>
+            <p className="muted">{tr("Selecciona un pais para comenzar la exploracion.", "Select a country to start exploration.")}</p>
           )}
-          {zoneCountryLoading && <p className="muted">Cargando depositos georreferenciados...</p>}
+          {zoneCountryLoading && <p className="muted">{tr("Cargando depositos georreferenciados...", "Loading georeferenced deposits...")}</p>}
           {!zoneCountryLoading && zoneCountryIso && !zoneCountryDeposits.length && !zoneCountryError && (
-            <p className="muted">El pais seleccionado no tiene depositos georreferenciados.</p>
+            <p className="muted">{tr("El pais seleccionado no tiene depositos georreferenciados.", "The selected country has no georeferenced deposits.")}</p>
           )}
           {!zoneCountryLoading && zoneAnalysisLoading && (
-            <p className="muted">Analizando zona automaticamente...</p>
+            <p className="muted">{tr("Analizando zona automaticamente...", "Analyzing area automatically...")}</p>
           )}
 
           <div className={styles.corridorLayout}>
             <article className={styles.mapCard}>
-              <h4>Mapa de zona de interes</h4>
+              <h4>{tr("Mapa de zona de interes", "Area of interest map")}</h4>
               <div className={styles.mapWrap}>
                 <MapContainer
                   center={DEFAULT_VIEW}
@@ -1203,7 +1221,7 @@ export default function TerrenoClient() {
                         }}
                       >
                         <Tooltip direction="top" offset={[0, -2]}>
-                          <strong>Centro de zona</strong>
+                          <strong>{tr("Centro de zona", "Area center")}</strong>
                           <br />
                           {formatNumber(zoneCenter.lat, 4)}, {formatNumber(zoneCenter.lng, 4)}
                         </Tooltip>
@@ -1273,8 +1291,8 @@ export default function TerrenoClient() {
                           <strong>{deposit.name}</strong>
                           <br />
                           {inZone
-                            ? `Deposito registrado dentro de la zona seleccionada (${formatNumber(inZone.distance_km, 2)} km al centro)`
-                            : "Fuera de la zona"}
+                            ? `${tr("Deposito registrado dentro de la zona seleccionada", "Deposit registered inside selected area")} (${formatNumber(inZone.distance_km, 2)} km ${tr("al centro", "to center")})`
+                            : tr("Fuera de la zona", "Outside area")}
                         </Tooltip>
                       </CircleMarker>
                     );
@@ -1282,31 +1300,36 @@ export default function TerrenoClient() {
                 </MapContainer>
               </div>
               <p className="muted">
-                Este analisis se basa en registros mineralogicos y proximidad espacial. No garantiza la
-                presencia de minerales en campo.
+                {tr(
+                  "Este analisis se basa en registros mineralogicos y proximidad espacial. No garantiza la presencia de minerales en campo.",
+                  "This analysis is based on mineralogical records and spatial proximity. It does not guarantee mineral presence in the field.",
+                )}
               </p>
             </article>
 
             <article className={styles.resultsCard}>
-              <h4>Resumen de zona</h4>
+              <h4>{tr("Resumen de zona", "Area summary")}</h4>
               {!zoneResult && (
                 <p className="muted">
-                  Selecciona una zona en el mapa para ejecutar el analisis automaticamente.
+                  {tr(
+                    "Selecciona una zona en el mapa para ejecutar el analisis automaticamente.",
+                    "Select an area on the map to run the analysis automatically.",
+                  )}
                 </p>
               )}
               {zoneResult && (
                 <>
                   <div className={styles.kpisGrid}>
                     <div>
-                      <strong>Depositos encontrados</strong>
+                      <strong>{tr("Depositos encontrados", "Deposits found")}</strong>
                       <p>{formatNumber(zoneResult.deposit_count)}</p>
                     </div>
                     <div>
-                      <strong>Radio</strong>
+                      <strong>{tr("Radio", "Radius")}</strong>
                       <p>{formatNumber(zoneResult.radius_km, 0)} km</p>
                     </div>
                     <div>
-                      <strong>Deposito mas cercano</strong>
+                      <strong>{tr("Deposito mas cercano", "Nearest deposit")}</strong>
                       <p>{nearestDeposit ? nearestDeposit.name : "N/A"}</p>
                     </div>
                   </div>
@@ -1316,13 +1339,18 @@ export default function TerrenoClient() {
                   <section className={styles.resultSection}>
                     <h5>
                       <InfoHint
-                        label="Ranking de minerales"
-                        text="Frecuencia relativa del mineral dentro de la zona analizada."
+                        label={tr("Ranking de minerales", "Mineral ranking")}
+                        text={tr(
+                          "Frecuencia relativa del mineral dentro de la zona analizada.",
+                          "Relative mineral frequency within the analyzed area.",
+                        )}
                       />
                     </h5>
                     <p className="muted">
-                      La intensidad representa la frecuencia del mineral dentro de los depositos encontrados
-                      en la zona seleccionada.
+                      {tr(
+                        "La intensidad representa la frecuencia del mineral dentro de los depositos encontrados en la zona seleccionada.",
+                        "Intensity represents mineral frequency within deposits found in the selected area.",
+                      )}
                     </p>
                     {zoneResult.minerals?.length ? (
                       <ul className={styles.rankingList}>
@@ -1336,18 +1364,17 @@ export default function TerrenoClient() {
                         ))}
                       </ul>
                     ) : (
-                      <p className="muted">No hay minerales registrados para la zona seleccionada.</p>
+                      <p className="muted">{tr("No hay minerales registrados para la zona seleccionada.", "There are no minerals registered for the selected area.")}</p>
                     )}
                   </section>
 
                   <section className={styles.resultSection}>
-                    <h5>Depositos dentro de la zona</h5>
+                    <h5>{tr("Depositos dentro de la zona", "Deposits within area")}</h5>
                     <div className={styles.depositsScroll}>
                       <ul className={styles.depositsList}>
                         {(zoneResult.deposits || []).map((deposit) => (
                           <li key={`zone-result-${deposit.dep_id}`}>
-                            <strong>{deposit.name}</strong> - {formatNumber(deposit.distance_km, 2)} km al
-                            centro - Minerales:{" "}
+                            <strong>{deposit.name}</strong> - {formatNumber(deposit.distance_km, 2)} km {tr("al centro", "to center")} - {tr("Minerales", "Minerals")}:{" "}
                             {deposit.minerals?.length ? localizeMineralList(deposit.minerals) : "N/A"}
                           </li>
                         ))}
@@ -1366,14 +1393,16 @@ export default function TerrenoClient() {
       return (
         <>
           <p className="muted">
-            Explora la distribucion mineralogica por pais para identificar minerales dominantes,
-            coexistencias frecuentes y concentracion espacial observada.
+            {tr(
+              "Explora la distribucion mineralogica por pais para identificar minerales dominantes, coexistencias frecuentes y concentracion espacial observada.",
+              "Explore mineralogical distribution by country to identify dominant minerals, frequent coexistence, and observed spatial concentration.",
+            )}
           </p>
           <div className={styles.controls}>
             <label>
-              Pais
+              {tr("Pais", "Country")}
               <select value={freqCountryIso} onChange={(event) => setFreqCountryIso(event.target.value)}>
-                <option value="">Seleccionar pais</option>
+                <option value="">{tr("Seleccionar pais", "Select country")}</option>
                 {countries.map((country) => (
                   <option key={`freq-${country.country_name}-${country.iso3}`} value={country.iso3 || ""}>
                     {country.country_name} ({country.iso3 || "N/A"})
@@ -1382,9 +1411,9 @@ export default function TerrenoClient() {
               </select>
             </label>
             <label>
-              Mineral (opcional)
+              {tr("Mineral (opcional)", "Mineral (optional)")}
               <select value={freqMineral} onChange={(event) => setFreqMineral(event.target.value)}>
-                <option value="">Todos los minerales</option>
+                <option value="">{tr("Todos los minerales", "All minerals")}</option>
                 {(freqResult?.available_minerals || []).map((item) => (
                   <option key={`min-opt-${item.mineral}`} value={item.mineral}>
                     {localizeMineral(item.mineral)}
@@ -1403,22 +1432,25 @@ export default function TerrenoClient() {
           </div>
 
           {!freqCountryIso && (
-            <p className="muted">Selecciona un pais para explorar minerales frecuentes.</p>
+            <p className="muted">{tr("Selecciona un pais para explorar minerales frecuentes.", "Select a country to explore frequent minerals.")}</p>
           )}
           {freqError && <div className={styles.messageBox}>{freqError}</div>}
           {freqCountryIso && freqLoading && (
-            <p className="muted">Analizando distribucion mineralogica...</p>
+            <p className="muted">{tr("Analizando distribucion mineralogica...", "Analyzing mineralogical distribution...")}</p>
           )}
           {freqCountryIso && !freqLoading && !freqResult?.minerals?.length && !freqError && (
-            <p className="muted">No se encontraron minerales asociados para esta seleccion.</p>
+            <p className="muted">{tr("No se encontraron minerales asociados para esta seleccion.", "No associated minerals were found for this selection.")}</p>
           )}
 
           <div className={styles.corridorLayout}>
             <article className={styles.mapCard}>
               <h4>
                 <InfoHint
-                  label="Mapa de intensidad mineralogica"
-                  text="La concentracion visual representa frecuencia espacial observada del mineral seleccionado."
+                  label={tr("Mapa de intensidad mineralogica", "Mineralogical intensity map")}
+                  text={tr(
+                    "La concentracion visual representa frecuencia espacial observada del mineral seleccionado.",
+                    "Visual concentration represents observed spatial frequency of the selected mineral.",
+                  )}
                 />
               </h4>
               <div className={styles.mapWrap}>
@@ -1452,9 +1484,9 @@ export default function TerrenoClient() {
                         <Tooltip direction="top" offset={[0, -2]}>
                           <strong>{point.dep_name}</strong>
                           <br />
-                          Mineral dominante: {localizeMineral(point.mineral)}
+                          {tr("Mineral dominante", "Dominant mineral")}: {localizeMineral(point.mineral)}
                           <br />
-                          Intensidad: {formatNumber((Number(point.weight) || 0) * 100, 0)}%
+                          {tr("Intensidad", "Intensity")}: {formatNumber((Number(point.weight) || 0) * 100, 0)}%
                         </Tooltip>
                       </CircleMarker>
                     );
@@ -1462,24 +1494,26 @@ export default function TerrenoClient() {
                 </MapContainer>
               </div>
               <p className="muted">
-                Los resultados se basan en registros mineralogicos existentes y distribucion espacial
-                observada.
+                {tr(
+                  "Los resultados se basan en registros mineralogicos existentes y distribucion espacial observada.",
+                  "Results are based on existing mineralogical records and observed spatial distribution.",
+                )}
               </p>
             </article>
 
             <article className={styles.resultsCard}>
-              <h4>Resumen mineralogico</h4>
+              <h4>{tr("Resumen mineralogico", "Mineralogical summary")}</h4>
               <div className={styles.kpisGrid}>
                 <div>
-                  <strong>Pais</strong>
+                  <strong>{tr("Pais", "Country")}</strong>
                   <p>{freqCountryLabel || "N/A"}</p>
                 </div>
                 <div>
-                  <strong>Depositos analizados</strong>
+                  <strong>{tr("Depositos analizados", "Analyzed deposits")}</strong>
                   <p>{formatNumber(freqResult?.total_deposits || 0)}</p>
                 </div>
                 <div>
-                  <strong>Mineral foco</strong>
+                  <strong>{tr("Mineral foco", "Focus mineral")}</strong>
                   <p>{localizeMineral(freqResult?.coexistence_focus_mineral)}</p>
                 </div>
               </div>
@@ -1487,13 +1521,15 @@ export default function TerrenoClient() {
               <section className={styles.resultSection}>
                 <h5>
                   <InfoHint
-                    label="Ranking de minerales"
-                    text="Porcentaje de depositos del pais donde aparece este mineral."
+                    label={tr("Ranking de minerales", "Mineral ranking")}
+                    text={tr("Porcentaje de depositos del pais donde aparece este mineral.", "Percentage of country deposits where this mineral appears.")}
                   />
                 </h5>
                 <p className="muted">
-                  La intensidad representa la frecuencia relativa del mineral dentro de los depositos
-                  registrados del pais seleccionado.
+                  {tr(
+                    "La intensidad representa la frecuencia relativa del mineral dentro de los depositos registrados del pais seleccionado.",
+                    "Intensity represents the relative mineral frequency within recorded deposits of the selected country.",
+                  )}
                 </p>
                 {(freqResult?.minerals || []).length ? (
                   <ul className={styles.rankingBars}>
@@ -1508,8 +1544,14 @@ export default function TerrenoClient() {
                         </div>
                         <span
                           className={`${styles[`intensity-${item.intensity}`]} acronym-hint`}
-                          data-tooltip="Clasificacion relativa basada en frecuencia observada dentro del pais seleccionado."
-                          aria-label="Clasificacion relativa basada en frecuencia observada dentro del pais seleccionado."
+                          data-tooltip={tr(
+                            "Clasificacion relativa basada en frecuencia observada dentro del pais seleccionado.",
+                            "Relative classification based on observed frequency within the selected country.",
+                          )}
+                          aria-label={tr(
+                            "Clasificacion relativa basada en frecuencia observada dentro del pais seleccionado.",
+                            "Relative classification based on observed frequency within the selected country.",
+                          )}
                           tabIndex={0}
                         >
                           {item.intensity}
@@ -1518,16 +1560,16 @@ export default function TerrenoClient() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="muted">No hay minerales para mostrar en el ranking.</p>
+                  <p className="muted">{tr("No hay minerales para mostrar en el ranking.", "There are no minerals to display in the ranking.")}</p>
                 )}
               </section>
 
               <section className={styles.resultSection}>
-                <h5>Coexistencia mineralogica</h5>
+                <h5>{tr("Coexistencia mineralogica", "Mineralogical coexistence")}</h5>
                 <p className="muted">
                   {freqResult?.coexistence_focus_mineral
-                    ? `${localizeMineral(freqResult.coexistence_focus_mineral)} suele aparecer junto con:`
-                    : "Selecciona un mineral para profundizar coexistencia."}
+                    ? `${localizeMineral(freqResult.coexistence_focus_mineral)} ${tr("suele aparecer junto con", "usually appears together with")}:`
+                    : tr("Selecciona un mineral para profundizar coexistencia.", "Select a mineral to deepen coexistence analysis.")}
                 </p>
                 {(freqResult?.coexistence || []).length ? (
                   <ul className={styles.simpleList}>
@@ -1538,12 +1580,12 @@ export default function TerrenoClient() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="muted">No se detecto coexistencia relevante para esta seleccion.</p>
+                  <p className="muted">{tr("No se detecto coexistencia relevante para esta seleccion.", "No relevant coexistence was detected for this selection.")}</p>
                 )}
               </section>
 
               <section className={styles.resultSection}>
-                <h5>Zonas dominantes</h5>
+                <h5>{tr("Zonas dominantes", "Dominant zones")}</h5>
                 {(freqResult?.top_regions || []).length ? (
                   <ul className={styles.simpleList}>
                     {(freqResult?.top_regions || []).map((region) => (
@@ -1553,7 +1595,7 @@ export default function TerrenoClient() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="muted">No se encontraron regiones dominantes para esta seleccion.</p>
+                  <p className="muted">{tr("No se encontraron regiones dominantes para esta seleccion.", "No dominant regions were found for this selection.")}</p>
                 )}
               </section>
             </article>
@@ -1565,14 +1607,16 @@ export default function TerrenoClient() {
     return (
       <>
         <p className="muted">
-          Analiza patrones espaciales historicos para identificar concentraciones relativas de registros
-          asociados al mineral seleccionado.
+          {tr(
+            "Analiza patrones espaciales historicos para identificar concentraciones relativas de registros asociados al mineral seleccionado.",
+            "Analyze historical spatial patterns to identify relative concentrations of records associated with the selected mineral.",
+          )}
         </p>
         <div className={styles.controls}>
           <label>
-            Pais
+            {tr("Pais", "Country")}
             <select value={potentialCountryIso} onChange={(event) => setPotentialCountryIso(event.target.value)}>
-              <option value="">Seleccionar pais</option>
+              <option value="">{tr("Seleccionar pais", "Select country")}</option>
               {countries.map((country) => (
                 <option key={`pot-${country.country_name}-${country.iso3}`} value={country.iso3 || ""}>
                   {country.country_name} ({country.iso3 || "N/A"})
@@ -1581,9 +1625,9 @@ export default function TerrenoClient() {
             </select>
           </label>
           <label>
-            Mineral objetivo
+            {tr("Mineral objetivo", "Target mineral")}
             <select value={potentialMineral} onChange={(event) => setPotentialMineral(event.target.value)}>
-              <option value="">Seleccionar mineral</option>
+              <option value="">{tr("Seleccionar mineral", "Select mineral")}</option>
               {potentialMineralOptions.map((option) => (
                 <option key={`pot-min-${option}`} value={option}>
                   {localizeMineral(option)}
@@ -1592,22 +1636,22 @@ export default function TerrenoClient() {
             </select>
           </label>
           <label>
-            Sensibilidad espacial
+            {tr("Sensibilidad espacial", "Spatial sensitivity")}
             <select value={potentialIntensity} onChange={(event) => setPotentialIntensity(event.target.value)}>
-              <option value="low">Baja (mas agrupaciones)</option>
-              <option value="medium">Media</option>
-              <option value="high">Alta (menos agrupaciones)</option>
+              <option value="low">{tr("Baja (mas agrupaciones)", "Low (more clusters)")}</option>
+              <option value="medium">{tr("Media", "Medium")}</option>
+              <option value="high">{tr("Alta (menos agrupaciones)", "High (fewer clusters)")}</option>
             </select>
           </label>
         </div>
         {potentialCountryIso && !potentialMineralOptions.length && (
-          <p className="muted">No hay minerales disponibles para este pais en los registros actuales.</p>
+          <p className="muted">{tr("No hay minerales disponibles para este pais en los registros actuales.", "No minerals are available for this country in current records.")}</p>
         )}
         {!potentialCountryIso || !potentialMineral.trim() ? (
-          <p className="muted">Selecciona un pais y un mineral para analizar patrones espaciales.</p>
+          <p className="muted">{tr("Selecciona un pais y un mineral para analizar patrones espaciales.", "Select a country and a mineral to analyze spatial patterns.")}</p>
         ) : null}
         {potentialError && <div className={styles.messageBox}>{potentialError}</div>}
-        {potentialLoading && <p className="muted">Analizando patron espacial...</p>}
+        {potentialLoading && <p className="muted">{tr("Analizando patron espacial...", "Analyzing spatial pattern...")}</p>}
         {!potentialLoading && potentialResult?.message && (
           <p className="muted">{potentialResult.message}</p>
         )}
@@ -1616,8 +1660,10 @@ export default function TerrenoClient() {
           potentialResult?.total_deposits > 0 &&
           potentialVisibleHeatPoints.length === 0 && (
             <p className="muted">
-              Con esta sensibilidad no se detectaron agrupaciones robustas. Prueba con sensibilidad media o
-              baja. Se muestran igualmente los puntos observados para mantener contexto espacial.
+              {tr(
+                "Con esta sensibilidad no se detectaron agrupaciones robustas. Prueba con sensibilidad media o baja. Se muestran igualmente los puntos observados para mantener contexto espacial.",
+                "No robust clusters were detected with this sensitivity. Try medium or low sensitivity. Observed points are still shown to keep spatial context.",
+              )}
             </p>
           )}
 
@@ -1625,8 +1671,11 @@ export default function TerrenoClient() {
           <article className={styles.mapCard}>
             <h4>
               <InfoHint
-                label="Mapa de potencial exploratorio"
-                text="Visualizacion exploratoria basada en registros historicos y proximidad espacial."
+                label={tr("Mapa de potencial exploratorio", "Exploratory potential map")}
+                text={tr(
+                  "Visualizacion exploratoria basada en registros historicos y proximidad espacial.",
+                  "Exploratory visualization based on historical records and spatial proximity.",
+                )}
               />
             </h4>
             <div className={styles.mapWrap}>
@@ -1672,11 +1721,11 @@ export default function TerrenoClient() {
                       <Tooltip direction="top" offset={[0, -2]}>
                         <strong>{point.dep_name}</strong>
                         <br />
-                        Mineral: {localizeMineral(point.mineral)}
+                        {tr("Mineral", "Mineral")}: {localizeMineral(point.mineral)}
                         <br />
-                        Zona: {point.region || "N/A"}
+                        {tr("Zona", "Zone")}: {point.region || "N/A"}
                         <br />
-                        Presencia relativa: {formatNumber((Number(point.weight) || 0) * 100, 0)}%
+                        {tr("Presencia relativa", "Relative presence")}: {formatNumber((Number(point.weight) || 0) * 100, 0)}%
                       </Tooltip>
                     </CircleMarker>
                   );
@@ -1684,27 +1733,32 @@ export default function TerrenoClient() {
               </MapContainer>
             </div>
             <p className="muted">
-              El potencial exploratorio mostrado se basa unicamente en registros historicos y distribucion
-              espacial observada.{" "}
+              {tr(
+                "El potencial exploratorio mostrado se basa unicamente en registros historicos y distribucion espacial observada.",
+                "The displayed exploratory potential is based only on historical records and observed spatial distribution.",
+              )}{" "}
               <InfoHint
-                text="Este analisis no representa una prediccion geologica profesional ni garantiza presencia mineral en campo."
+                text={tr(
+                  "Este analisis no representa una prediccion geologica profesional ni garantiza presencia mineral en campo.",
+                  "This analysis does not represent a professional geological prediction and does not guarantee mineral presence in the field.",
+                )}
               />
             </p>
           </article>
 
           <article className={styles.resultsCard}>
-            <h4>Resumen de patron espacial</h4>
+            <h4>{tr("Resumen de patron espacial", "Spatial pattern summary")}</h4>
             <div className={styles.kpisGrid}>
               <div>
-                <strong>Pais</strong>
+                <strong>{tr("Pais", "Country")}</strong>
                 <p>{potentialCountryLabel || "N/A"}</p>
               </div>
               <div>
-                <strong>Mineral objetivo</strong>
+                <strong>{tr("Mineral objetivo", "Target mineral")}</strong>
                 <p>{localizeMineral(potentialResult?.mineral || potentialMineral)}</p>
               </div>
               <div>
-                <strong>Depositos analizados</strong>
+                <strong>{tr("Depositos analizados", "Analyzed deposits")}</strong>
                 <p>{formatNumber(potentialResult?.total_deposits || 0)}</p>
               </div>
             </div>
@@ -1712,8 +1766,11 @@ export default function TerrenoClient() {
             <section className={styles.resultSection}>
               <h5>
                 <InfoHint
-                  label="Clasificacion espacial"
-                  text="Patron estimado a partir de agrupamiento de depositos y frecuencia mineralogica."
+                  label={tr("Clasificacion espacial", "Spatial classification")}
+                  text={tr(
+                    "Patron estimado a partir de agrupamiento de depositos y frecuencia mineralogica.",
+                    "Estimated pattern based on deposit clustering and mineralogical frequency.",
+                  )}
                 />
               </h5>
               <div className={styles.badgesRow}>
@@ -1723,7 +1780,7 @@ export default function TerrenoClient() {
             </section>
 
             <section className={styles.resultSection}>
-              <h5>Zonas principales detectadas</h5>
+              <h5>{tr("Zonas principales detectadas", "Main detected zones")}</h5>
               {(potentialResult?.top_regions || []).length ? (
                 <ul className={styles.simpleList}>
                   {(potentialResult?.top_regions || []).map((item) => (
@@ -1733,15 +1790,18 @@ export default function TerrenoClient() {
                   ))}
                 </ul>
               ) : (
-                <p className="muted">No hay zonas dominantes para esta seleccion.</p>
+                <p className="muted">{tr("No hay zonas dominantes para esta seleccion.", "There are no dominant zones for this selection.")}</p>
               )}
             </section>
 
             <section className={styles.resultSection}>
-              <h5>Resumen de concentracion</h5>
+              <h5>{tr("Resumen de concentracion", "Concentration summary")}</h5>
               <p className="muted">
                 {potentialResult?.explanation ||
-                  "Las zonas resaltadas representan concentraciones espaciales de registros mineralogicos asociados al mineral seleccionado."}
+                  tr(
+                    "Las zonas resaltadas representan concentraciones espaciales de registros mineralogicos asociados al mineral seleccionado.",
+                    "Highlighted zones represent spatial concentrations of mineralogical records associated with the selected mineral.",
+                  )}
               </p>
             </section>
           </article>
