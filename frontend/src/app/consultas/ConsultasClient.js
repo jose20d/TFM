@@ -497,7 +497,7 @@ export default function ConsultasClient() {
               value={combinedFilters.excludeMineral}
               onChange={(e) => setCombinedFilters((p) => ({ ...p, excludeMineral: e.target.value }))}
             >
-              <option value="">{tr("Todos", "All")}</option>
+              <option value="">{tr("Ninguno", "None")}</option>
               {minerals.map((mineral) => (
                 <option key={`comb-ex-${mineral.value}`} value={mineral.value}>
                   {mineral.label}
@@ -701,7 +701,7 @@ export default function ConsultasClient() {
             <span className={styles.inputHint}>{tr("Max registrado", "Recorded max")}: {formatNumber(profileBounds.fsi_max || 0, 2)}</span>
           )}
         </label>
-        <label>
+        <label className={styles.fieldProfileLimit}>
           {tr("Limite", "Limit")}
           <input
             type="number"
@@ -712,6 +712,9 @@ export default function ConsultasClient() {
               setProfileFilters((p) => ({ ...p, limit: Math.max(1, Number(e.target.value) || 200) }))
             }
           />
+          <span className={`${styles.inputHint} ${styles.inputHintPlaceholder}`} aria-hidden="true">
+            {tr("Reservado para alinear", "Reserved for alignment")}
+          </span>
         </label>
       </div>
     );

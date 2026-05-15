@@ -38,6 +38,7 @@ function InfoHint({ text, label }) {
 
 export default function ExploreClient() {
   const lang = useLang();
+  const tr = (es, en) => (lang === "en" ? en : es);
   const [isHydrated, setIsHydrated] = useState(false);
   const [countries, setCountries] = useState([]);
   const [minerals, setMinerals] = useState([]);
@@ -185,7 +186,14 @@ export default function ExploreClient() {
     return () => controller.abort();
   }, [filters, page, lang, buildExploreParams]);
 
-  const selectedCountryLabel = countries.find((country) => country.iso3 === filters.countryIso)?.country_name || "Todos";
+  const selectedCountryLabel =
+    countries.find((country) => country.iso3 === filters.countryIso)?.country_name || tr("Todos", "All");
+  const selectedMineralLabel = useMemo(() => {
+    const value = filters.mineral.trim();
+    if (!value) return tr("Todos", "All");
+    const selected = minerals.find((item) => item.value === value);
+    return selected?.label || value;
+  }, [filters.mineral, minerals, lang]);
   const mapRows = useMemo(() => listRows, [listRows]);
   const renderedUntil = page * RESULTS_PAGE_SIZE + listRows.length;
   const hiddenMapRows = Math.max(0, totalRows - renderedUntil);
@@ -244,7 +252,10 @@ export default function ExploreClient() {
             <select
               value={limitInput}
               onChange={(e) => setLimitInput(Number(e.target.value) || DEFAULT_LIMIT)}
-              aria-label="Limite visual utilizado para mantener rendimiento y claridad del mapa."
+              aria-label={tr(
+                "Limite visual utilizado para mantener rendimiento y claridad del mapa.",
+                "Visual limit used to keep map performance and readability.",
+              )}
             >
               {!isHydrated ? (
                 <option value={DEFAULT_LIMIT}>
@@ -273,7 +284,7 @@ export default function ExploreClient() {
             </div>
             <div className="summary-item">
               <h3>{lang === "en" ? "Filtered mineral" : "Mineral filtrado"}</h3>
-              <p>{filters.mineral.trim() || (lang === "en" ? "All" : "Todos")}</p>
+              <p>{selectedMineralLabel}</p>
             </div>
             <div className="summary-item">
               <h3>{lang === "en" ? "Loaded points" : "Puntos cargados"}</h3>
@@ -282,7 +293,7 @@ export default function ExploreClient() {
           </div>
           <p className="muted">
             <InfoHint
-              label="Limite de puntos"
+              label={tr("Limite de puntos", "Point limit")}
               text={
                 lang === "en"
                   ? "Visual limit used to keep map performance and readability."
