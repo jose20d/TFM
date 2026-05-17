@@ -13,6 +13,7 @@ from web.services.common.query_service import fetch_one
 
 APP_DIR = Path(__file__).resolve().parents[1]
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
+EXCLUDED_COUNTRY_KEYS = {"antartica", "antarctica", "antartida", "antarctida"}
 
 
 def web_index(request: Request) -> HTMLResponse:
@@ -42,6 +43,11 @@ def countries(q: str | None, limit: int, lang: str) -> list[dict]:
         LIMIT %s
     """
     localized = localize_payload(fetch_all(sql, (q or "", like_q, like_q, like_q, limit)), lang)
+    localized = [
+        item
+        for item in localized
+        if sort_key_localized(item.get("country_name")) not in EXCLUDED_COUNTRY_KEYS
+    ]
     localized.sort(key=lambda item: sort_key_localized(item.get("country_name")))
     return localized
 

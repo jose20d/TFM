@@ -1,0 +1,25 @@
+ Container geocontext-postgres Running 
+ Container geocontext-postgres Waiting 
+ Container geocontext-postgres Healthy 
+ Container tfm-etl-run-fed784c63777 Creating 
+ Container tfm-etl-run-fed784c63777 Created 
+[download] mrds_csv -> /app/data/raw/mrds_csv/rdbms-tab-all.zip
+[ok] mrds_csv: saved /app/data/raw/mrds_csv/rdbms-tab-all.zip
+[download] worldbank_gdp -> /app/data/raw/worldbank_gdp/NY.GDP.MKTP.CD.json
+[ok] worldbank_gdp: saved /app/data/raw/worldbank_gdp/NY.GDP.MKTP.CD.json
+[download] worldbank_population -> /app/data/raw/worldbank_population/SP.POP.TOTL.json
+[ok] worldbank_population: saved /app/data/raw/worldbank_population/SP.POP.TOTL.json
+[download] fsi -> /app/data/raw/fsi/FSI-DOWNLOAD.xlsx
+[ok] fsi: saved /app/data/raw/fsi/FSI-DOWNLOAD.xlsx
+[download] cpi -> /app/data/raw/cpi/CPI2025_Results.xlsx
+[ok] cpi: saved /app/data/raw/cpi/CPI2025_Results.xlsx
+[download] iso_country_codes -> /app/data/raw/iso/country-codes.csv
+[ok] iso_country_codes: saved /app/data/raw/iso/country-codes.csv
+[info] i18n dictionary refreshed: seed=407, catalog_updates=3055, materialized=3133
+[sanity] dataset_config: 0
+[sanity] etl_load_log: 0
+[sanity] dim_country: 144
+[sanity] mrds_deposit: 304388
+[sanity] country_indicator: 0
+[ok] ETL pipeline finished.
+[next] Start web app with: uvicorn web.app:app --reload

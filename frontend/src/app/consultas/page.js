@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import ConsultasClient from "./ConsultasClient";
 
 export const metadata = {
@@ -6,5 +7,9 @@ export const metadata = {
 };
 
 export default function ConsultasPage() {
-  return <ConsultasClient />;
+  return (
+    <Suspense fallback={null}>
+      <ConsultasClient />
+    </Suspense>
+  );
 }
