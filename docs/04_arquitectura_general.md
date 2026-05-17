@@ -67,6 +67,19 @@ Sus responsabilidades incluyen:
 
 ---
 
+### 2.5 Capa de ejecución local con contenedores (Docker Compose)
+
+El proyecto incorpora una orquestación local para operación reproducible:
+
+- `postgres` (imagen `postgis/postgis`) como base de datos local.
+- `backend` (FastAPI/Uvicorn) con variables `DB_*`.
+- `frontend` (Next.js build/start) con proxy interno hacia backend.
+- `etl` como servicio bajo profile `jobs` (ejecución puntual, no automática).
+
+Esta capa no altera contratos funcionales de API ni lógica de negocio; solo estandariza el entorno de ejecución.
+
+---
+
 ## 3. Separación por capas lógicas
 
 Desde una perspectiva estructural, el sistema puede dividirse en cinco bloques:
@@ -117,7 +130,7 @@ La arquitectura implementada corresponde a un entorno académico y local. No inc
 - Arquitectura distribuida.
 - Microservicios desacoplados por dominio.
 - Gestión avanzada de usuarios.
-- Despliegue en contenedores productivos.
+- Despliegue en contenedores productivos (sí existe dockerización local de desarrollo).
 - Infraestructura de alta disponibilidad.
 
 Estas decisiones responden al alcance del proyecto, centrado en integración de datos, analítica y visualización operativa más que en despliegue enterprise.

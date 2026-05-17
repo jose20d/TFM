@@ -10,6 +10,14 @@ frontend/node_modules/
 frontend/.next/
 frontend/AGENTS.md
 frontend/CLAUDE.md
+frontend/.env.local
+
+# local environment and secrets
+.env
+.env.local
+.env.production
+.env.*
+!.env.example
 
 .DS_Store
 
@@ -27,6 +35,10 @@ archive/**/.venv/
 
 # local/accidental npm lock at repository root
 /package-lock.json
+
+# local docs/notes not part of tracked deliverable
+README_WINDOWS.md
+etl_docker.log
 
 
 
