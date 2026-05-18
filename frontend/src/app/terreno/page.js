@@ -1,4 +1,4 @@
-import TerrenoClient from "./TerrenoClient";
+import TerrenoClientWrapper from "./TerrenoClientWrapper";
 
 export const metadata = {
   title: "GeoContext | Terreno",
@@ -6,5 +6,5 @@ export const metadata = {
 };
 
 export default function TerrenoPage() {
-  return <TerrenoClient />;
+  return <TerrenoClientWrapper />;
 }

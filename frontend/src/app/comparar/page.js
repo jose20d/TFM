@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import CompareClient from "./CompareClient";
 
 export const metadata = {
@@ -7,6 +8,8 @@ export const metadata = {
 
 export default function CompararPage() {
   return (
-    <CompareClient />
+    <Suspense fallback={null}>
+      <CompareClient />
+    </Suspense>
   );
 }

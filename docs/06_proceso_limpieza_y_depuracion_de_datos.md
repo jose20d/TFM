@@ -12,6 +12,14 @@ Este documento resume el flujo real de limpieza, depuracion, normalizacion y car
   - archivo oficial `Location.txt` (fuente primaria),
   - inferencia por coordenadas como respaldo.
 
+## 1.1) Entrypoints operativos ETL
+
+- Comando legado (compatibilidad): `python3 main.py`
+- Comando modular actual: `python3 -m etl.run_etl`
+- Docker (ejecución puntual): `docker compose --profile jobs run --rm etl`
+
+Los tres caminos ejecutan el mismo flujo ETL y terminan al finalizar (sin scheduler interno).
+
 ## 2) Entradas y fuentes
 
 Fuentes principales configuradas en `configs/datasets.json`:
@@ -76,6 +84,10 @@ def _filter_countries_by_iso(
 - Lee CSV ISO 3166-1.
 - Identifica columnas de nombre/ISO2/ISO3 aunque cambien etiquetas.
 - Normaliza nombre e ISO3.
+- Normaliza ISO2 con validación defensiva:
+  - descarta nulos/NaN,
+  - conserva solo códigos de 2 caracteres,
+  - aplica cast a `text` en SQL para evitar fallos por tipos mixtos.
 - Carga en `iso_country_codes` con upsert por `iso3`.
 - Ejecuta consolidacion de `dim_country` por `iso3` para eliminar duplicados historicos
   (ej.: variantes como "United States" vs "United States of America").

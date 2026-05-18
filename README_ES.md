@@ -4,15 +4,15 @@ Este repositorio contiene el código operativo del TFM: ETL, API analítica y fr
 
 ## Alcance actual
 
-- ETL extremo a extremo (`python3 main.py`) desde fuentes oficiales hacia PostgreSQL/PostGIS.
-- API con FastAPI (`web/app.py`) para dashboard, terreno y consultas guiadas.
-- Frontend Next.js (`frontend/`) con interfaz bilingüe (`es`/`en`).
-- Estrategia i18n híbrida para datos de dominio:
-  - diccionario canónico (`i18n_term_catalog`, `i18n_term_translation`),
-  - tabla materializada de serving (`i18n_term_materialized`),
-  - semilla ETL (`database/i18n_terms_seed.csv`).
+- ETL extremo a extremo desde fuentes oficiales hacia PostgreSQL/PostGIS.
+- Backend FastAPI (`web/app.py`) para analítica, terreno y consultas guiadas.
+- Frontend Next.js (`frontend/`) con UX bilingüe (`es` / `en`).
+- i18n híbrido para datos de dominio (`country`, `mineral` y dominios relacionados).
+- Flujo local con Docker para backend, frontend, postgres/postgis y ETL bajo demanda.
 
-## Ejecución rápida (Linux)
+## Modos de ejecución
+
+### 1) Modo local (sin Docker)
 
 ```bash
 python3 -m venv .venv
@@ -25,7 +25,11 @@ export DB_NAME=tu_db
 export DB_USER=tu_usuario
 export DB_PASSWORD=tu_password
 
+# ETL (ambos comandos son válidos)
 python3 main.py
+python3 -m etl.run_etl
+
+# Backend
 uvicorn web.app:app --reload --port 8000
 ```
 
@@ -38,80 +42,73 @@ export BACKEND_API_URL=http://127.0.0.1:8000
 npm run dev
 ```
 
+### 2) Modo Docker local
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+Ejecutar ETL bajo demanda (no automático en `up`):
+
+```bash
+docker compose --profile jobs run --rm etl
+```
+
 ## URLs locales
 
 - Frontend: `http://127.0.0.1:3000/`
 - Backend/API: `http://127.0.0.1:8000/`
-- Documentación OpenAPI: `http://127.0.0.1:8000/docs`
+- OpenAPI docs: `http://127.0.0.1:8000/docs`
 
-## Comportamientos clave del runtime
+## Notas ETL
 
-- Los crudos se descargan y preservan en `data/raw/` para trazabilidad.
-- Idempotencia ETL por hash:
+- Módulo principal ETL: `etl/run_etl.py`
+- Wrapper de compatibilidad: `main.py`
+- Los crudos se preservan en `data/raw/` para trazabilidad.
+- Idempotencia y observabilidad ETL:
   - `etl_dataset_state`
   - `etl_dataset_run_log`
-- Normalización territorial con whitelist ISO:
-  - crudo: `data/raw/iso/country-codes.csv`
+  - `etl_load_log`
+- Referencia ISO para normalización territorial:
+  - archivo crudo: `data/raw/iso/country-codes.csv`
   - tabla: `iso_country_codes`
-- Capa i18n de datos servida por:
+
+## Notas i18n
+
+- Diccionario + traducción + tabla materializada de serving:
   - `i18n_term_catalog`
   - `i18n_term_translation`
   - `i18n_term_materialized`
-
-## Notas del frontend
-
-- El idioma se controla con query param `lang` (`es` o `en`).
-- El frontend propaga idioma hacia endpoints backend.
-- `Explorar` usa límites por país y paginación para casos de alto volumen.
-
-## Demo archivada de Semana 1
-
-La demo original de validación de fuentes sigue archivada por trazabilidad:
-
-- `archive/week1_data_consumption_demo/`
-
-Ejecución:
-
-```bash
-cd archive/week1_data_consumption_demo && bash ./run_demo.sh
-```
+- El idioma en frontend se controla con `lang` (`es`, `en`).
+- El backend localiza valores de dominio antes de responder.
 
 ## Prerrequisitos
 
-- **SO**: Linux (Ubuntu 22.04+ recomendado). El proyecto está probado en entornos Linux.
-- **Python**: 3.10+ (recomendado 3.12).
-- **PostgreSQL**: 14+ (servidor y herramientas cliente).
+- **SO**: Linux (Ubuntu 22.04+ recomendado).
+- **Python**: 3.10+.
+- **Node.js**: 20+.
+- **PostgreSQL**: 14+.
 - **PostGIS**: habilitado en la base de datos destino.
 
-### Instalación de PostgreSQL
-
-Consulta la guía oficial de instalación para Linux:
-- PostgreSQL Global Development Group. (2024). *PostgreSQL: Linux downloads (Debian/Ubuntu)*. https://www.postgresql.org/download/linux/ubuntu/
-
-### Instalación de PostGIS
-
-Consulta la documentación oficial de PostGIS:
-- PostGIS Project. (2024). *PostGIS: Installation*. https://postgis.net/documentation/
-
-Tras instalar PostGIS, habilítalo en la base de datos (como superusuario):
+Habilitar PostGIS una vez (como administrador):
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS postgis;
 ```
 
+## Restricciones arquitectónicas clave
+
+- No hay staging JSON en la ruta principal ETL.
+- `dataset_config` es el registro de metadatos.
+- El ETL sigue siendo proceso finito (ejecuta y termina), sin scheduler interno.
+- El ETL en Docker corre bajo el profile `jobs` para no ejecutarse al levantar web.
+
 ## Convenciones del repositorio
 
-- **Idioma**: código en inglés; documentación técnica principal en español/inglés según archivo.
-- **Capa de base de datos**: el pipeline principal carga en PostgreSQL/PostGIS.
-- **Sin datos generados en Git**: `data/`, `output/` y `otros/` son generados y están ignorados por `.gitignore`.
-
-## Restricciones de diseño / guardrails
-
-- El pipeline no requiere superusuario; PostGIS debe habilitarlo un administrador previamente.
-- Las descargas crudas se preservan para trazabilidad y auditoría.
-- No hay staging en JSONL en la ruta principal; los datos se limpian en memoria y se cargan directo a PostgreSQL.
-- `dataset_config` es el único registro de metadatos; no se usa `dim_dataset`.
-- Un solo comando (`python3 main.py`) ejecuta el flujo ETL completo sin prompts interactivos.
+- Los datos generados y salidas locales están ignorados por `.gitignore`.
+- Archivos de entorno sensibles se ignoran (`.env*`, excepto `.env.example`).
+- `README_WINDOWS.md` se mantiene solo como documentación local (no trackeado en Git).
 
 
 

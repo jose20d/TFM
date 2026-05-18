@@ -443,3 +443,113 @@ Nota metodologica: los bytes para `cpi`, `fsi`, `worldbank_gdp` y `worldbank_pop
 - Se mantuvieron contratos de API y comportamiento funcional (rutas, parametros y payloads) para evitar regresiones en frontend.
 - Como cierre del refactor, se elimino la implementacion legacy (`web/services/api_impl.py`) al quedar sin referencias activas.
 - Beneficio principal: menor acoplamiento, mejor mantenibilidad y mayor capacidad para evolucionar endpoints por dominio sin afectar el resto del sistema.
+
+### 8.10 Hallazgos recientes: Docker local + ETL + catalogo de paises
+
+#### 8.10.1 Docker local consolidado sin alterar contratos
+
+**Justificacion tecnica**
+
+- Se formalizo una orquestacion local unica con `docker-compose.yml`.
+- El ETL se separo como job puntual (`profile: jobs`) para evitar ejecucion implicita al levantar frontend/backend.
+
+**Muestra de codigo (`docker-compose.yml`)**
+
+```yaml
+  etl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python -m etl.run_etl
+    profiles:
+      - jobs
+```
+
+#### 8.10.2 Error ISO2 (`CHAR(2)`) en `iso_country_codes`
+
+**Justificacion tecnica**
+
+- El fallo se originaba cuando `iso2` llegaba con tipos mixtos (por ejemplo `NaN` como float).
+- Se reforzo la validacion previa y se blindo la insercion SQL con cast explicito a `text`.
+
+**Muestra de codigo (`scripts/load_to_db.py`)**
+
+```python
+def _norm_iso2(value: Any) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip().upper()
+    if len(text) != 2:
+        return None
+    return text
+```
+
+```python
+execute_values(cur, sql, rows, template="(%s, %s, NULLIF(LEFT(%s::text, 2), ''), %s, %s)")
+```
+
+#### 8.10.3 `country_indicator` en cero tras corrida ETL
+
+**Justificacion tecnica**
+
+- Se detecto escenario de hash sin cambios pero tabla destino vacia.
+- Se aplico recarga forzada para indicadores cuando `country_indicator` del dataset esta en cero.
+- Se mejoro observabilidad con trazas `[load]`, `[ok]` y sanity final por dataset.
+
+**Muestra de codigo (`scripts/load_to_db.py`)**
+
+```python
+if hash_value and last_hash == hash_value:
+    if dataset_id in {"worldbank_gdp", "worldbank_population", "cpi", "fsi"}:
+        cur.execute("SELECT COUNT(*) FROM country_indicator WHERE dataset_id = %s", (dataset_id,))
+        existing = int(cur.fetchone()[0] or 0)
+        if existing == 0:
+            print(f"[load] {dataset_id} (hash unchanged, country_indicator empty -> forced reload)")
+```
+
+```python
+print(f"[ok] country_indicator inserted/updated: {len(payload)} ({dataset_label})")
+```
+
+#### 8.10.4 Build Next.js en contenedor (prerender)
+
+**Justificacion tecnica**
+
+- Se registraron fallos de prerender por uso de `useSearchParams` sin boundary de `Suspense`.
+- Se resolvio encapsulando paginas cliente con `Suspense` para mantener build estable en Docker.
+
+**Muestra de codigo (`frontend/src/app/comparar/page.js`)**
+
+```javascript
+export default function CompararPage() {
+  return (
+    <Suspense fallback={null}>
+      <CompareClient />
+    </Suspense>
+  );
+}
+```
+
+#### 8.10.5 Antartica en selectores de pais
+
+**Justificacion tecnica**
+
+- La opcion aparecia en UI y provocaba flujo de consulta no operativo.
+- Se aplico exclusion explicita en servicio de catalogo antes del retorno al frontend.
+
+**Muestra de codigo (`web/services/overview_service.py`)**
+
+```python
+EXCLUDED_COUNTRY_KEYS = {"antartica", "antarctica", "antartida", "antarctida"}
+
+localized = [
+    item
+    for item in localized
+    if sort_key_localized(item.get("country_name")) not in EXCLUDED_COUNTRY_KEYS
+]
+```

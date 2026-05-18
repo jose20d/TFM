@@ -127,6 +127,16 @@ def _norm_iso3(value: str | None) -> str | None:
     return normalize_iso3(text) if text else None
 
 
+def _norm_iso2(value: Any) -> str | None:
+    """Normalize ISO2 values; keep only valid 2-char codes."""
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip().upper()
+    if len(text) != 2:
+        return None
+    return text
+
+
 def _norm_term_token(value: str | None) -> str:
     """Normalize free-text terms for stable i18n dictionary keys."""
     text = str(value or "").strip().lower()
@@ -345,7 +355,7 @@ def _read_iso_country_codes(
             {
                 "country_name": name.strip(),
                 "country_norm": name_norm,
-                "iso2": str(iso2).strip().upper() if isinstance(iso2, str) else None,
+                "iso2": _norm_iso2(iso2),
                 "iso3": iso3_norm,
                 "iso_numeric": str(iso_num).strip() if iso_num is not None else None,
             }
@@ -400,7 +410,9 @@ def _insert_iso_country_codes(cur, df: pd.DataFrame) -> int:
             iso2 = EXCLUDED.iso2,
             iso_numeric = EXCLUDED.iso_numeric
     """
-    execute_values(cur, sql, rows)
+    # Extra guard against mixed runtime types (e.g. float NaN from CSV parsing).
+    # Cast to text before LEFT so PostgreSQL never receives LEFT(double precision, ...).
+    execute_values(cur, sql, rows, template="(%s, %s, NULLIF(LEFT(%s::text, 2), ''), %s, %s)")
     return len(rows)
 
 
@@ -939,6 +951,12 @@ def _country_id_map(cur) -> dict[str, int]:
     return {row[1]: row[0] for row in cur.fetchall()}
 
 
+def _country_id_map_by_iso3(cur) -> dict[str, int]:
+    """Build an ISO3 → country_id map from dim_country."""
+    cur.execute("SELECT country_id, iso3 FROM dim_country WHERE iso3 IS NOT NULL")
+    return {normalize_iso3(row[1]): int(row[0]) for row in cur.fetchall() if row[1]}
+
+
 def _iso2_country_id_map(cur) -> dict[str, int]:
     """Build an ISO2 → country_id map using ISO reference data."""
     cur.execute(
@@ -1092,6 +1110,22 @@ def _repair_existing_mrds_locations(
     return len(updates)
 
 
+def _upsert_country_indicator_payload(cur, payload: list[tuple], dataset_label: str) -> tuple[int, int]:
+    """Upsert country_indicator rows with safe empty-payload handling."""
+    if not payload:
+        print(f"[ok] country_indicator inserted/updated: 0 ({dataset_label})")
+        return 0, 0
+    sql = """
+        INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value)
+        VALUES %s
+        ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
+        SET value = EXCLUDED.value
+    """
+    execute_values(cur, sql, payload)
+    print(f"[ok] country_indicator inserted/updated: {len(payload)} ({dataset_label})")
+    return len(payload), 0
+
+
 def _run_mrds_location_reconcile(cur) -> tuple[int, int, int]:
     """
     Run the location reconcile flow:
@@ -1210,6 +1244,8 @@ def main() -> int:
             _ensure_dataset_config_seed(cur, cfg)
             _insert_dataset_config(cur, cfg)
             _normalize_dataset_ids(cur)
+            # Keep config metadata even if a later dataset load rolls back.
+            conn.commit()
 
             iso_path = _dataset_path(cfg, "iso_country_codes", raw_dir)
             iso_df = pd.DataFrame()
@@ -1256,6 +1292,7 @@ def main() -> int:
             ) -> None:
                 start = time.time()
                 if not raw_path or not raw_path.exists():
+                    print(f"[skip] {dataset_id}: raw file not found")
                     log_missing(dataset_id, int((time.time() - start) * 1000))
                     conn.commit()
                     return
@@ -1263,11 +1300,25 @@ def main() -> int:
                 hash_value = _file_hash(raw_path)
                 last_hash, _ = _get_dataset_state(cur, dataset_id)
                 if hash_value and last_hash == hash_value:
-                    log_no_change(dataset_id, hash_value, int((time.time() - start) * 1000))
-                    conn.commit()
-                    return
+                    # Force reload for indicators if target table is empty.
+                    if dataset_id in {"worldbank_gdp", "worldbank_population", "cpi", "fsi"}:
+                        cur.execute("SELECT COUNT(*) FROM country_indicator WHERE dataset_id = %s", (dataset_id,))
+                        existing = int(cur.fetchone()[0] or 0)
+                        if existing == 0:
+                            print(f"[load] {dataset_id} (hash unchanged, country_indicator empty -> forced reload)")
+                        else:
+                            print(f"[skip] {dataset_id}: no changes detected")
+                            log_no_change(dataset_id, hash_value, int((time.time() - start) * 1000))
+                            conn.commit()
+                            return
+                    else:
+                        print(f"[skip] {dataset_id}: no changes detected")
+                        log_no_change(dataset_id, hash_value, int((time.time() - start) * 1000))
+                        conn.commit()
+                        return
 
                 try:
+                    print(f"[load] {dataset_id}")
                     rows_inserted, rows_updated = loader()
                     _upsert_dataset_state(cur, dataset_id, hash_value or "", True)
                     _insert_run_log(
@@ -1284,6 +1335,7 @@ def main() -> int:
                     )
                     conn.commit()
                 except Exception as exc:
+                    print(f"[error] {dataset_id}: {exc}", file=sys.stderr)
                     conn.rollback()
                     _insert_run_log(
                         cur,
@@ -1309,14 +1361,21 @@ def main() -> int:
                 rows = _load_worldbank_rows(raw_path, dataset_id, aliases)
                 rows = _canonicalize_indicator_rows(rows, iso3_to_norm, iso3_to_name)
                 countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
-                countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                filtered_countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                if countries and not filtered_countries:
+                    print(f"[warn] {dataset_id}: ISO filtering removed all rows; fallback to unfiltered country set")
+                    filtered_countries = countries
+                countries = filtered_countries
                 countries = _canonicalize_country_rows(countries, iso3_to_norm, iso3_to_name)
                 _insert_countries(cur, countries)
                 country_map = _country_id_map(cur)
+                iso3_map = _country_id_map_by_iso3(cur)
 
                 payload = []
                 for r in rows:
                     country_id = country_map.get(r["country_norm"])
+                    if not country_id and r.get("iso3"):
+                        country_id = iso3_map.get(normalize_iso3(r["iso3"]))
                     if not country_id or not r.get("year"):
                         continue
                     payload.append(
@@ -1334,14 +1393,7 @@ def main() -> int:
                     if key not in unique_rows:
                         unique_rows[key] = row
                 payload = list(unique_rows.values())
-                sql = """
-                    INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value)
-                    VALUES %s
-                    ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
-                    SET value = EXCLUDED.value
-                """
-                execute_values(cur, sql, payload)
-                return len(payload), 0
+                return _upsert_country_indicator_payload(cur, payload, dataset_id)
 
             def load_fsi(raw_path: Path) -> tuple[int, int]:
                 fsi_entry = _dataset_entry(cfg, "fsi")
@@ -1349,14 +1401,21 @@ def main() -> int:
                 rows = _load_fsi_rows(raw_path, aliases, dataset_id="fsi", year_hint=year_hint)
                 rows = _canonicalize_indicator_rows(rows, iso3_to_norm, iso3_to_name)
                 countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
-                countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                filtered_countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                if countries and not filtered_countries:
+                    print("[warn] fsi: ISO filtering removed all rows; fallback to unfiltered country set")
+                    filtered_countries = countries
+                countries = filtered_countries
                 countries = _canonicalize_country_rows(countries, iso3_to_norm, iso3_to_name)
                 _insert_countries(cur, countries)
                 country_map = _country_id_map(cur)
+                iso3_map = _country_id_map_by_iso3(cur)
 
                 payload = []
                 for r in rows:
                     country_id = country_map.get(r["country_norm"])
+                    if not country_id and r.get("iso3"):
+                        country_id = iso3_map.get(normalize_iso3(r["iso3"]))
                     if not country_id or not r.get("year"):
                         continue
                     payload.append(
@@ -1374,14 +1433,7 @@ def main() -> int:
                     if key not in unique_rows:
                         unique_rows[key] = row
                 payload = list(unique_rows.values())
-                sql = """
-                    INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value)
-                    VALUES %s
-                    ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
-                    SET value = EXCLUDED.value
-                """
-                execute_values(cur, sql, payload)
-                return len(payload), 0
+                return _upsert_country_indicator_payload(cur, payload, "fsi")
 
             def load_cpi(raw_path: Path) -> tuple[int, int]:
                 cpi_entry = _dataset_entry(cfg, "cpi")
@@ -1389,14 +1441,21 @@ def main() -> int:
                 rows = _load_cpi_rows(raw_path, aliases, dataset_id="cpi", year_hint=year_hint)
                 rows = _canonicalize_indicator_rows(rows, iso3_to_norm, iso3_to_name)
                 countries = [(r["country"], r["country_norm"], r["iso3"]) for r in rows]
-                countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                filtered_countries = _filter_countries_by_iso(countries, iso3_set, iso_name_set)
+                if countries and not filtered_countries:
+                    print("[warn] cpi: ISO filtering removed all rows; fallback to unfiltered country set")
+                    filtered_countries = countries
+                countries = filtered_countries
                 countries = _canonicalize_country_rows(countries, iso3_to_norm, iso3_to_name)
                 _insert_countries(cur, countries)
                 country_map = _country_id_map(cur)
+                iso3_map = _country_id_map_by_iso3(cur)
 
                 payload = []
                 for r in rows:
                     country_id = country_map.get(r["country_norm"])
+                    if not country_id and r.get("iso3"):
+                        country_id = iso3_map.get(normalize_iso3(r["iso3"]))
                     if not country_id or not r.get("year"):
                         continue
                     payload.append(
@@ -1414,14 +1473,7 @@ def main() -> int:
                     if key not in unique_rows:
                         unique_rows[key] = row
                 payload = list(unique_rows.values())
-                sql = """
-                    INSERT INTO country_indicator (country_id, dataset_id, indicator_code, year, value)
-                    VALUES %s
-                    ON CONFLICT (country_id, dataset_id, indicator_code, year) DO UPDATE
-                    SET value = EXCLUDED.value
-                """
-                execute_values(cur, sql, payload)
-                return len(payload), 0
+                return _upsert_country_indicator_payload(cur, payload, "cpi")
 
             def load_mrds(raw_path: Path) -> tuple[int, int]:
                 loc_path = _resolve_mrds_file(mrds_extract, "Location")

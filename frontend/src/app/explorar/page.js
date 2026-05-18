@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import ExploreClient from "./ExploreClient";
 
 export const metadata = {
@@ -6,5 +7,9 @@ export const metadata = {
 };
 
 export default function ExplorarPage() {
-  return <ExploreClient />;
+  return (
+    <Suspense fallback={null}>
+      <ExploreClient />
+    </Suspense>
+  );
 }
