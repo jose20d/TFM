@@ -40,5 +40,5 @@ Open `http://127.0.0.1:3000/`.
 
 ## Notes
 
-- The frontend uses `/api/backend/[...path]` as internal proxy to FastAPI.
+- The frontend targets backend endpoints through `/api/v1/*` (for example behind Nginx reverse proxy).
 - For stable dev behavior after large UI refactors, clear `.next/` and restart dev server.

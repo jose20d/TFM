@@ -114,8 +114,8 @@ export default function AnalysisClient() {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      getJson(withLang("/api/backend/api/v1/analysis/country-overview", lang)),
-      getJson("/api/backend/api/v1/health"),
+      getJson(withLang("/api/v1/analysis/country-overview", lang)),
+      getJson("/api/v1/health"),
     ])
       .then(([analysisRows, health]) => {
         setRows(Array.isArray(analysisRows) ? analysisRows : []);

@@ -140,11 +140,11 @@ export default function ConsultasClient() {
 
   useEffect(() => {
     Promise.all([
-      fetch(withLang("/api/backend/api/v1/countries?limit=300", lang), { cache: "no-store" }).then((r) => {
+      fetch(withLang("/api/v1/countries?limit=300", lang), { cache: "no-store" }).then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       }),
-      fetch(withLang("/api/backend/api/v1/minerals?limit=1000", lang), { cache: "no-store" }).then((r) => {
+      fetch(withLang("/api/v1/minerals?limit=1000", lang), { cache: "no-store" }).then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       }),
@@ -168,7 +168,7 @@ export default function ConsultasClient() {
   }, [lang]);
 
   useEffect(() => {
-    fetch(withLang("/api/backend/api/v1/queries/country-profile/bounds", lang), { cache: "no-store" })
+    fetch(withLang("/api/v1/queries/country-profile/bounds", lang), { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -182,7 +182,7 @@ export default function ConsultasClient() {
     setSpatialFilters((prev) => ({ ...prev, baseDepId: "" }));
     if (!spatialFilters.countryIso) return;
     fetch(
-      withLang(`/api/backend/api/v1/explore/deposits?country_iso3=${spatialFilters.countryIso}&limit=5000`, lang),
+      withLang(`/api/v1/explore/deposits?country_iso3=${spatialFilters.countryIso}&limit=5000`, lang),
       { cache: "no-store" },
     )
       .then((response) => {
@@ -209,7 +209,7 @@ export default function ConsultasClient() {
     if (!spatialFilters.countryIso) return;
 
     fetch(
-      withLang(`/api/backend/api/v1/terrain/frequent-minerals?country_iso3=${spatialFilters.countryIso}&show_all=true&limit=50`, lang),
+      withLang(`/api/v1/terrain/frequent-minerals?country_iso3=${spatialFilters.countryIso}&show_all=true&limit=50`, lang),
       { cache: "no-store" },
     )
       .then((response) => {
@@ -250,7 +250,7 @@ export default function ConsultasClient() {
           min_minerals: String(depositFilters.minMinerals),
           limit: String(depositFilters.limit),
         });
-        url = `/api/backend/api/v1/queries/deposits-by-mineral?${qs.toString()}`;
+        url = `/api/v1/queries/deposits-by-mineral?${qs.toString()}`;
       } else if (activeMode === "combined") {
         const qs = new URLSearchParams({
           country_iso3: combinedFilters.countryIso,
@@ -259,7 +259,7 @@ export default function ConsultasClient() {
           exclude_mineral: combinedFilters.excludeMineral,
           limit: String(combinedFilters.limit),
         });
-        url = `/api/backend/api/v1/queries/combined-minerals?${qs.toString()}`;
+        url = `/api/v1/queries/combined-minerals?${qs.toString()}`;
       } else if (activeMode === "spatial") {
         if (!spatialFilters.countryIso || !spatialFilters.baseDepId) {
           setError(tr("Selecciona pais y deposito base para la consulta espacial.", "Select country and base deposit for spatial query."));
@@ -273,7 +273,7 @@ export default function ConsultasClient() {
           mineral: spatialFilters.mineral,
           limit: String(spatialFilters.limit),
         });
-        url = `/api/backend/api/v1/queries/spatial-nearby?${qs.toString()}`;
+        url = `/api/v1/queries/spatial-nearby?${qs.toString()}`;
       } else {
         const gdpMinInput = toNumberOrNull(profileFilters.gdpMin);
         const gdpMaxInput = toNumberOrNull(profileFilters.gdpMax);
@@ -301,7 +301,7 @@ export default function ConsultasClient() {
         if (cpiMaxValue !== null) qs.set("cpi_max", String(cpiMaxValue));
         if (fsiMinValue !== null) qs.set("fsi_min", String(fsiMinValue));
         if (fsiMaxValue !== null) qs.set("fsi_max", String(fsiMaxValue));
-        url = `/api/backend/api/v1/queries/country-profile?${qs.toString()}`;
+        url = `/api/v1/queries/country-profile?${qs.toString()}`;
       }
 
       const response = await fetch(withLang(url, lang), { cache: "no-store" });

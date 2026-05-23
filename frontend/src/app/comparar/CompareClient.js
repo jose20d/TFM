@@ -170,9 +170,9 @@ export default function CompareClient() {
 
   useEffect(() => {
     Promise.all([
-      getJson(withLang("/api/backend/api/v1/countries?limit=300", lang)),
-      getJson("/api/backend/api/v1/home/defaults"),
-      getJson("/api/backend/api/v1/health"),
+      getJson(withLang("/api/v1/countries?limit=300", lang)),
+      getJson("/api/v1/home/defaults"),
+      getJson("/api/v1/health"),
     ])
       .then(([countriesData, defaultsData, healthData]) => {
         const allCountries = Array.isArray(countriesData) ? countriesData : [];
@@ -204,7 +204,7 @@ export default function CompareClient() {
       return;
     }
     const qs = selectedIso.map((iso) => `iso3=${encodeURIComponent(iso)}`).join("&");
-    getJson(withLang(`/api/backend/api/v1/countries/compare?${qs}`, lang))
+    getJson(withLang(`/api/v1/countries/compare?${qs}`, lang))
       .then((data) => {
         setRows(Array.isArray(data) ? data : []);
         setError("");

@@ -218,11 +218,11 @@ export default function TerrenoClient() {
 
   useEffect(() => {
     Promise.all([
-      fetch(withLang("/api/backend/api/v1/countries?limit=300", lang), { cache: "no-store" }).then((response) => {
+      fetch(withLang("/api/v1/countries?limit=300", lang), { cache: "no-store" }).then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
       }),
-      fetch(withLang("/api/backend/api/v1/minerals?limit=5000", lang), { cache: "no-store" }).then((response) => {
+      fetch(withLang("/api/v1/minerals?limit=5000", lang), { cache: "no-store" }).then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
       }),
@@ -300,7 +300,7 @@ export default function TerrenoClient() {
 
     const controller = new AbortController();
     setCountryLoading(true);
-    fetch(withLang(`/api/backend/api/v1/explore/deposits?country_iso3=${countryIso}&limit=5000`, lang), {
+    fetch(withLang(`/api/v1/explore/deposits?country_iso3=${countryIso}&limit=5000`, lang), {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -354,7 +354,7 @@ export default function TerrenoClient() {
 
     const controller = new AbortController();
     setZoneCountryLoading(true);
-    fetch(withLang(`/api/backend/api/v1/explore/deposits?country_iso3=${zoneCountryIso}&limit=5000`, lang), {
+    fetch(withLang(`/api/v1/explore/deposits?country_iso3=${zoneCountryIso}&limit=5000`, lang), {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -416,7 +416,7 @@ export default function TerrenoClient() {
 
     const controller = new AbortController();
     fetch(
-      withLang(`/api/backend/api/v1/terrain/frequent-minerals?country_iso3=${potentialCountryIso}&show_all=true&limit=50`, lang),
+      withLang(`/api/v1/terrain/frequent-minerals?country_iso3=${potentialCountryIso}&show_all=true&limit=50`, lang),
       { cache: "no-store", signal: controller.signal },
     )
       .then((response) => {
@@ -566,7 +566,7 @@ export default function TerrenoClient() {
     setAnalysisLoading(true);
     setAnalysisError("");
     try {
-      const response = await fetch(withLang(`/api/backend/api/v1/terrain/corridor?${qs.toString()}`, lang), {
+      const response = await fetch(withLang(`/api/v1/terrain/corridor?${qs.toString()}`, lang), {
         cache: "no-store",
       });
       const payload = await response.json();
@@ -685,7 +685,7 @@ export default function TerrenoClient() {
           limit: String(freqLimit),
         });
         if (freqMineral.trim()) qs.set("mineral", freqMineral.trim());
-        const response = await fetch(withLang(`/api/backend/api/v1/terrain/frequent-minerals?${qs.toString()}`, lang), {
+        const response = await fetch(withLang(`/api/v1/terrain/frequent-minerals?${qs.toString()}`, lang), {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -722,7 +722,7 @@ export default function TerrenoClient() {
           mineral: potentialMineral.trim(),
           intensity_level: potentialIntensity,
         });
-        const response = await fetch(withLang(`/api/backend/api/v1/terrain/exploratory-potential?${qs.toString()}`, lang), {
+        const response = await fetch(withLang(`/api/v1/terrain/exploratory-potential?${qs.toString()}`, lang), {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -776,7 +776,7 @@ export default function TerrenoClient() {
     setZoneAnalysisLoading(true);
     setZoneAnalysisError("");
     try {
-      const response = await fetch(withLang(`/api/backend/api/v1/terrain/zone-interest?${qs.toString()}`, lang), {
+      const response = await fetch(withLang(`/api/v1/terrain/zone-interest?${qs.toString()}`, lang), {
         cache: "no-store",
       });
       const payload = await response.json();
