@@ -1,0 +1,45 @@
+---
+- name: Desplegar actualización de aplicación en staging
+  hosts: staging
+  become: false
+  gather_facts: false
+
+  vars:
+    app_dir: /opt/tfm-geocontext
+
+  tasks:
+    # Sincroniza código con rama principal remota.
+    - name: Actualizar repositorio (git pull origin main)
+      ansible.builtin.command:
+        cmd: git pull origin main
+        chdir: "{{ app_dir }}"
+      register: git_pull_result
+      changed_when: "'Already up to date.' not in git_pull_result.stdout"
+
+    # Reconstruye solo imágenes necesarias para app web.
+    - name: Reconstruir imágenes backend y frontend
+      ansible.builtin.command:
+        cmd: docker compose build backend frontend
+        chdir: "{{ app_dir }}"
+      register: compose_build_result
+      changed_when: true
+
+    # Levanta/actualiza servicios sin bajar stack completo.
+    - name: Levantar servicios con docker compose up -d
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ app_dir }}"
+      register: compose_up_result
+      changed_when: true
+
+    # Muestra estado final de contenedores para validación operativa.
+    - name: Mostrar estado final de contenedores
+      ansible.builtin.command:
+        cmd: docker compose ps
+        chdir: "{{ app_dir }}"
+      register: compose_ps_result
+      changed_when: false
+
+    - name: Imprimir salida de docker compose ps
+      ansible.builtin.debug:
+        msg: "{{ compose_ps_result.stdout_lines }}"

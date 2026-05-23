@@ -69,8 +69,8 @@ export default function ExploreClient() {
 
   useEffect(() => {
     Promise.all([
-      getJson(withLang("/api/backend/api/v1/countries?limit=300", lang)),
-      getJson(withLang("/api/backend/api/v1/minerals?limit=1000", lang)),
+      getJson(withLang("/api/v1/countries?limit=300", lang)),
+      getJson(withLang("/api/v1/minerals?limit=1000", lang)),
     ])
       .then(([countriesData, mineralsData]) => {
         setCountries(Array.isArray(countriesData) ? countriesData : []);
@@ -93,7 +93,7 @@ export default function ExploreClient() {
   useEffect(() => {
     const qs = new URLSearchParams();
     if (countryIsoInput) qs.set("country_iso3", countryIsoInput);
-    getJson(withLang(`/api/backend/api/v1/explore/limits?${qs.toString()}`, lang))
+    getJson(withLang(`/api/v1/explore/limits?${qs.toString()}`, lang))
       .then((limitsData) => {
         const fetchedMax = Number(limitsData?.max_limit);
         const normalizedMax = Number.isFinite(fetchedMax) && fetchedMax > 0 ? fetchedMax : DEFAULT_LIMIT;
@@ -131,7 +131,7 @@ export default function ExploreClient() {
     const controller = new AbortController();
     const qs = buildExploreParams(filters);
     setLoading(true);
-    fetch(withLang(`/api/backend/api/v1/explore/deposits-count?${qs.toString()}`, lang), {
+    fetch(withLang(`/api/v1/explore/deposits-count?${qs.toString()}`, lang), {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -166,7 +166,7 @@ export default function ExploreClient() {
     qs.set("limit", String(pageLimit));
     qs.set("offset", String(offset));
     setLoading(true);
-    fetch(withLang(`/api/backend/api/v1/explore/deposits?${qs.toString()}`, lang), {
+    fetch(withLang(`/api/v1/explore/deposits?${qs.toString()}`, lang), {
       cache: "no-store",
       signal: controller.signal,
     })

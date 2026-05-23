@@ -1,0 +1,57 @@
+---
+- name: Configurar Nginx reverse proxy para staging
+  hosts: staging
+  become: true
+  gather_facts: true
+
+  tasks:
+    # Instala Nginx desde repositorios de Ubuntu.
+    - name: Instalar nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+
+    # Asegura que el servicio esté habilitado al reiniciar la VM.
+    - name: Habilitar servicio nginx
+      ansible.builtin.service:
+        name: nginx
+        enabled: true
+
+    # Elimina sitio por defecto para evitar conflicto con GeoContext.
+    - name: Eliminar default site habilitado
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Eliminar default site disponible
+      ansible.builtin.file:
+        path: /etc/nginx/sites-available/default
+        state: absent
+
+    # Renderiza server block principal para staging HTTP.
+    - name: Crear configuración Nginx de GeoContext
+      ansible.builtin.template:
+        src: templates/geocontext-nginx.conf.j2
+        dest: /etc/nginx/sites-available/geocontext.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    # Habilita el server block mediante enlace simbólico.
+    - name: Habilitar site GeoContext
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/geocontext.conf
+        dest: /etc/nginx/sites-enabled/geocontext.conf
+        state: link
+
+    # Valida sintaxis antes de reiniciar.
+    - name: Validar configuración de nginx
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    # Reinicia para aplicar cambios nuevos.
+    - name: Reiniciar nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted

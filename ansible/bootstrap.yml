@@ -1,0 +1,99 @@
+---
+- name: Bootstrap base para EC2 staging (Ubuntu 24.04)
+  hosts: staging
+  become: true
+  gather_facts: true
+
+  vars:
+    docker_apt_key_url: "https://download.docker.com/linux/ubuntu/gpg"
+    docker_apt_keyring_path: "/etc/apt/keyrings/docker.asc"
+    docker_apt_repo: >-
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/ubuntu
+      {{ ansible_distribution_release }} stable
+
+  tasks:
+    # Actualiza índice apt para partir de un estado conocido.
+    - name: Actualizar apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    # Instala dependencias básicas para administración del servidor.
+    - name: Instalar paquetes básicos
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - git
+        state: present
+
+    # Crea directorio estándar para llaves de repositorios apt.
+    - name: Crear directorio para keyrings de apt
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    # Descarga la llave GPG oficial de Docker.
+    - name: Descargar llave GPG oficial de Docker
+      ansible.builtin.get_url:
+        url: "{{ docker_apt_key_url }}"
+        dest: "{{ docker_apt_keyring_path }}"
+        mode: "0644"
+
+    # Registra repositorio oficial de Docker para Ubuntu.
+    - name: Configurar repositorio oficial de Docker
+      ansible.builtin.apt_repository:
+        repo: "{{ docker_apt_repo }}"
+        filename: docker
+        state: present
+
+    # Refresca apt cache tras agregar el nuevo repositorio.
+    - name: Actualizar apt cache después de añadir Docker repo
+      ansible.builtin.apt:
+        update_cache: true
+
+    # Instala motor Docker, CLI y plugins solicitados.
+    - name: Instalar Docker Engine y plugins
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    # Asegura que el servicio Docker esté activo y habilitado en reboot.
+    - name: Habilitar e iniciar servicio Docker
+      ansible.builtin.service:
+        name: docker
+        enabled: true
+        state: started
+
+    # Permite ejecutar Docker sin sudo para el usuario ubuntu.
+    - name: Agregar usuario ubuntu al grupo docker
+      ansible.builtin.user:
+        name: ubuntu
+        groups: docker
+        append: true
+
+    # Validación rápida de instalación de Docker.
+    - name: Validar docker --version
+      ansible.builtin.command: docker --version
+      changed_when: false
+      register: docker_version_cmd
+
+    # Validación rápida del plugin Docker Compose.
+    - name: Validar docker compose version
+      ansible.builtin.command: docker compose version
+      changed_when: false
+      register: docker_compose_version_cmd
+
+    - name: Mostrar versiones instaladas
+      ansible.builtin.debug:
+        msg:
+          - "{{ docker_version_cmd.stdout }}"
+          - "{{ docker_compose_version_cmd.stdout }}"

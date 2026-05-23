@@ -40,5 +40,10 @@ archive/**/.venv/
 README_WINDOWS.md
 etl_docker.log
 
+# OpenTofu local state/artifacts
+infra/opentofu/.terraform/
+infra/opentofu/terraform.tfstate
+infra/opentofu/terraform.tfstate.backup
+
 
 
