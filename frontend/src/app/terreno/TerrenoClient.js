@@ -7,6 +7,7 @@ import "leaflet/dist/leaflet.css";
 import styles from "./terreno.module.css";
 import AppHeader from "../../components/AppHeader";
 import { t, useLang, withLang } from "../../lib/i18n";
+import { detectDefaultCountryIso3 } from "../../lib/geo-default";
 
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -248,6 +249,22 @@ export default function TerrenoClient() {
         setMineralLabelMap(new Map());
       });
   }, [lang]);
+
+  useEffect(() => {
+    if (!countries.length) return;
+    if (countryIso && zoneCountryIso && freqCountryIso && potentialCountryIso) return;
+    let mounted = true;
+    detectDefaultCountryIso3(countries).then((iso3) => {
+      if (!mounted || !iso3) return;
+      setCountryIso((prev) => prev || iso3);
+      setZoneCountryIso((prev) => prev || iso3);
+      setFreqCountryIso((prev) => prev || iso3);
+      setPotentialCountryIso((prev) => prev || iso3);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [countries, countryIso, zoneCountryIso, freqCountryIso, potentialCountryIso]);
 
   const countryLabel = useMemo(() => {
     const match = countries.find((country) => country.iso3 === countryIso);

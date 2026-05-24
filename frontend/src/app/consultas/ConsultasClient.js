@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css";
 import styles from "./consultas.module.css";
 import AppHeader from "../../components/AppHeader";
 import { t, useLang, withLang } from "../../lib/i18n";
+import { detectDefaultCountryIso3 } from "../../lib/geo-default";
 
 const MODES = [
   { id: "deposits" },
@@ -168,6 +169,21 @@ export default function ConsultasClient() {
   }, [lang]);
 
   useEffect(() => {
+    if (!countries.length) return;
+    if (depositFilters.countryIso && combinedFilters.countryIso && spatialFilters.countryIso) return;
+    let mounted = true;
+    detectDefaultCountryIso3(countries).then((iso3) => {
+      if (!mounted || !iso3) return;
+      setDepositFilters((prev) => ({ ...prev, countryIso: prev.countryIso || iso3 }));
+      setCombinedFilters((prev) => ({ ...prev, countryIso: prev.countryIso || iso3 }));
+      setSpatialFilters((prev) => ({ ...prev, countryIso: prev.countryIso || iso3 }));
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [countries, depositFilters.countryIso, combinedFilters.countryIso, spatialFilters.countryIso]);
+
+  useEffect(() => {
     fetch(withLang("/api/v1/queries/country-profile/bounds", lang), { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -236,6 +252,71 @@ export default function ConsultasClient() {
     () => (activeMode === "spatial" ? result.rows || [] : []),
     [activeMode, result.rows],
   );
+
+  useEffect(() => {
+    if (activeMode !== "spatial") return;
+    if (!spatialFilters.countryIso || !spatialFilters.baseDepId) return;
+
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+
+    const qs = new URLSearchParams({
+      country_iso3: spatialFilters.countryIso,
+      base_dep_id: String(spatialFilters.baseDepId),
+      radius_km: String(spatialFilters.radiusKm),
+      mineral: spatialFilters.mineral,
+      limit: String(spatialFilters.limit),
+    });
+
+    fetch(withLang(`/api/v1/queries/spatial-nearby?${qs.toString()}`, lang), {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) {
+          const detail = payload?.detail;
+          const detailText = Array.isArray(detail)
+            ? detail
+                .map((item) => {
+                  if (typeof item === "string") return item;
+                  if (item && typeof item === "object") {
+                    const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
+                    const msg = item.msg || "";
+                    return [loc, msg].filter(Boolean).join(": ");
+                  }
+                  return String(item ?? "");
+                })
+                .filter(Boolean)
+                .join(" | ")
+            : typeof detail === "string"
+              ? detail
+              : "";
+          throw new Error(detailText || `HTTP ${response.status}`);
+        }
+        return payload;
+      })
+      .then((payload) => {
+        setResult(payload || { result_count: 0, summary: "", rows: [] });
+      })
+      .catch((queryError) => {
+        if (queryError?.name === "AbortError") return;
+        setResult({ result_count: 0, summary: "", rows: [] });
+        setError(queryError?.message || (lang === "en" ? "Could not run query." : "No fue posible ejecutar la consulta."));
+      })
+      .finally(() => setLoading(false));
+
+    return () => controller.abort();
+  }, [
+    activeMode,
+    spatialFilters.countryIso,
+    spatialFilters.baseDepId,
+    spatialFilters.radiusKm,
+    spatialFilters.mineral,
+    spatialFilters.limit,
+    lang,
+  ]);
 
   async function runQuery() {
     setLoading(true);
@@ -837,17 +918,24 @@ export default function ConsultasClient() {
             )}
           </h3>
           <p className={`muted ${styles.helpText}`}>
-            {tr(
-              "Selecciona filtros y ejecuta una consulta para ver resultados compactos.",
-              "Select filters and run a query to see compact results.",
-            )}
+            {activeMode === "spatial"
+              ? tr(
+                  "En modo espacial, cada cambio en filtros ejecuta la busqueda automaticamente.",
+                  "In spatial mode, each filter change runs the query automatically.",
+                )
+              : tr(
+                  "Selecciona filtros y ejecuta una consulta para ver resultados compactos.",
+                  "Select filters and run a query to see compact results.",
+                )}
           </p>
           {renderFilters()}
-          <div className={styles.actionsRow}>
-            <button type="button" onClick={runQuery}>
-              {t(lang, "queriesRun")}
-            </button>
-          </div>
+          {activeMode !== "spatial" && (
+            <div className={styles.actionsRow}>
+              <button type="button" onClick={runQuery}>
+                {t(lang, "queriesRun")}
+              </button>
+            </div>
+          )}
           {loading && <p className="muted">{tr("Consultando datos...", "Querying data...")}</p>}
           {error && <p className="muted">{tr("Error", "Error")}: {error}</p>}
         </section>

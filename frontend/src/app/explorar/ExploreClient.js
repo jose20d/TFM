@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import AppHeader from "../../components/AppHeader";
 import { t, useLang, withLang } from "../../lib/i18n";
+import { detectDefaultCountryIso3 } from "../../lib/geo-default";
 const ExploreMap = dynamic(() => import("./ExploreMap"), { ssr: false });
 
 const DEFAULT_LIMIT = 500;
@@ -46,13 +47,9 @@ export default function ExploreClient() {
   const [countryIsoInput, setCountryIsoInput] = useState("");
   const [mineralInput, setMineralInput] = useState("");
   const [limitInput, setLimitInput] = useState(DEFAULT_LIMIT);
-  const [filters, setFilters] = useState({
-    countryIso: "",
-    mineral: "",
-    limit: DEFAULT_LIMIT,
-  });
   const [listRows, setListRows] = useState([]);
   const [totalRows, setTotalRows] = useState(0);
+  const [totalDeposits, setTotalDeposits] = useState(0);
   const [page, setPage] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -89,6 +86,27 @@ export default function ExploreClient() {
         setMinerals([]);
       });
   }, [lang]);
+
+  useEffect(() => {
+    if (!countries.length || countryIsoInput) return;
+    let mounted = true;
+    detectDefaultCountryIso3(countries).then((iso3) => {
+      if (!mounted || !iso3) return;
+      setCountryIsoInput((prev) => prev || iso3);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [countries, countryIsoInput]);
+
+  const filters = useMemo(
+    () => ({
+      countryIso: countryIsoInput,
+      mineral: mineralInput,
+      limit: limitInput,
+    }),
+    [countryIsoInput, mineralInput, limitInput],
+  );
 
   useEffect(() => {
     const qs = new URLSearchParams();
@@ -141,10 +159,12 @@ export default function ExploreClient() {
       })
       .then((data) => {
         const total = Number(data?.total) || 0;
+        setTotalDeposits(total);
         setTotalRows(Math.min(total, Math.max(0, Number(filters.limit) || 0)));
       })
       .catch((err) => {
         if (err?.name === "AbortError") return;
+        setTotalDeposits(0);
         setTotalRows(0);
         setError(err.message || (lang === "en" ? "Error querying data" : "Error consultando datos"));
       })
@@ -203,17 +223,9 @@ export default function ExploreClient() {
     if (page > totalPages - 1) setPage(Math.max(0, totalPages - 1));
   }, [page, totalPages]);
 
-  function applyFilters(event) {
-    event.preventDefault();
-    setLoading(true);
-    setError("");
+  useEffect(() => {
     setPage(0);
-    setFilters({
-      countryIso: countryIsoInput,
-      mineral: mineralInput,
-      limit: limitInput,
-    });
-  }
+  }, [countryIsoInput, mineralInput, limitInput]);
 
   return (
     <div className="page-shell">
@@ -223,7 +235,7 @@ export default function ExploreClient() {
         <section className="panel">
           <h2>{t(lang, "exploreTitle")}</h2>
           <p className="muted">{t(lang, "exploreHint")}</p>
-          <form className="explore-filters" onSubmit={applyFilters}>
+          <form className="explore-filters" onSubmit={(event) => event.preventDefault()}>
             <select
               value={countryIsoInput}
               onChange={(e) => {
@@ -273,7 +285,6 @@ export default function ExploreClient() {
                 ))
               )}
             </select>
-            <button type="submit">{t(lang, "exploreApply")}</button>
           </form>
           {loading && <p className="muted">{lang === "en" ? "Loading results..." : "Cargando resultados..."}</p>}
 
@@ -309,8 +320,8 @@ export default function ExploreClient() {
             {!filters.countryIso && (
               <p className="muted">
                 {lang === "en"
-                  ? "Select a country to display map points."
-                  : "Selecciona un pais para mostrar puntos en el mapa."}
+                  ? `World view active: ${formatNumber(totalDeposits)} deposits detected.`
+                  : `Vista mundo activa: ${formatNumber(totalDeposits)} depositos detectados.`}
               </p>
             )}
             <div className="map-wrap">
