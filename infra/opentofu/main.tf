@@ -87,8 +87,8 @@ resource "aws_route_table_association" "public_assoc" {
 
 # 5) Security Group básico para acceso a la instancia.
 #    - SSH (22), HTTP (80), HTTPS (443) desde Internet.
-#    - Puertos 3000/8000 abiertos temporalmente para validación de staging
-#      hasta publicar por Nginx/HTTPS en 80/443.
+#    - Los puertos 3000/8000 se usaron solo en debugging inicial y se cierran.
+#    - El acceso a la aplicación ocurre exclusivamente vía Nginx en 80/443.
 resource "aws_security_group" "ec2_basic" {
   name        = "tfm-staging-ec2-sg"
   description = "Acceso basico para EC2 de TFM staging"
@@ -114,22 +114,6 @@ resource "aws_security_group" "ec2_basic" {
     description = "HTTPS"
     from_port   = 443
     to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "Frontend staging temporal"
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "Backend API staging temporal"
-    from_port   = 8000
-    to_port     = 8000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }

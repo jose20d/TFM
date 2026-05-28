@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import "leaflet/dist/leaflet.css";
 import styles from "./consultas.module.css";
@@ -138,6 +138,7 @@ export default function ConsultasClient() {
   const [spatialCountryDeposits, setSpatialCountryDeposits] = useState([]);
   const [spatialMinerals, setSpatialMinerals] = useState([]);
   const [profileBounds, setProfileBounds] = useState(null);
+  const geoDefaultAppliedRef = useRef(false);
 
   useEffect(() => {
     Promise.all([
@@ -170,7 +171,9 @@ export default function ConsultasClient() {
 
   useEffect(() => {
     if (!countries.length) return;
-    if (depositFilters.countryIso && combinedFilters.countryIso && spatialFilters.countryIso) return;
+    if (geoDefaultAppliedRef.current) return;
+    geoDefaultAppliedRef.current = true;
+
     let mounted = true;
     detectDefaultCountryIso3(countries).then((iso3) => {
       if (!mounted || !iso3) return;
@@ -181,7 +184,7 @@ export default function ConsultasClient() {
     return () => {
       mounted = false;
     };
-  }, [countries, depositFilters.countryIso, combinedFilters.countryIso, spatialFilters.countryIso]);
+  }, [countries]);
 
   useEffect(() => {
     fetch(withLang("/api/v1/queries/country-profile/bounds", lang), { cache: "no-store" })
