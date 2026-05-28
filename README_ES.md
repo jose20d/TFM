@@ -73,6 +73,20 @@ docker compose --profile jobs run --rm etl
   - `INTERNAL_ADMIN_TOKEN`, `ADMIN_PANEL_USER`, `ADMIN_PANEL_PASSWORD`
   - `ETL_SCHEDULE_CRON`, `ETL_TIMEZONE` (opcionales)
 
+## HTTPS (Let's Encrypt)
+
+- Dominio productivo previsto: `geocontext.app` (con `www.geocontext.app` opcional).
+- Flujo recomendado:
+  1. Publicar DNS (`A`) de `geocontext.app` y `www` hacia la IP pública EC2.
+  2. Aplicar configuración HTTP base:
+     `ansible-playbook -i ansible/inventory.ini ansible/nginx.yml`
+  3. Emitir certificado y activar TLS:
+     `ansible-playbook -i ansible/inventory.ini ansible/https.yml`
+- El playbook `ansible/https.yml`:
+  - solicita certificado por webroot (`/var/www/certbot`),
+  - activa redirección HTTP->HTTPS,
+  - instala hook de renovación para recargar Nginx.
+
 ## Notas ETL
 
 - Módulo principal ETL: `etl/run_etl.py`

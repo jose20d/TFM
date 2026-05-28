@@ -1,16 +1,32 @@
-# GeoContext production HTTP reverse proxy.
-# Este archivo se usa como configuración base previa a habilitar TLS.
-{% set all_domains = [geocontext_domain | default('_')] + (geocontext_alt_domains | default([])) %}
+# GeoContext production HTTPS reverse proxy (Let's Encrypt).
+{% set all_domains = [geocontext_domain] + (geocontext_alt_domains | default([])) %}
 server {
     listen 80;
     listen [::]:80;
     server_name {{ all_domains | join(' ') }};
 
-    # Necesario para completar desafíos ACME de Let's Encrypt por webroot.
+    # Permite renovación automática por webroot.
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
         try_files $uri =404;
     }
+
+    # Todo lo demás redirige a HTTPS.
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ all_domains | join(' ') }};
+
+    ssl_certificate /etc/letsencrypt/live/{{ geocontext_domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ geocontext_domain }}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # Frontend Next.js en contenedor local puerto 3000.
     location / {

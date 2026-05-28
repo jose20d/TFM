@@ -3,8 +3,20 @@
   hosts: production
   become: true
   gather_facts: true
+  vars:
+    geocontext_domain: geocontext.app
+    geocontext_alt_domains:
+      - www.geocontext.app
 
   tasks:
+    - name: Crear webroot para desafíos ACME
+      ansible.builtin.file:
+        path: /var/www/certbot
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
     # Instala Nginx desde repositorios de Ubuntu.
     - name: Instalar nginx
       ansible.builtin.apt:
