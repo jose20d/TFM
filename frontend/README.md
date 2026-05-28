@@ -22,6 +22,9 @@ Open `http://127.0.0.1:3000/`.
 ## Environment
 
 - `BACKEND_API_URL`: FastAPI base URL used by the frontend proxy route.
+- `INTERNAL_ADMIN_TOKEN`: shared secret used by the private metrics API bridge.
+- `ADMIN_PANEL_USER`: Basic Auth username for internal admin routes.
+- `ADMIN_PANEL_PASSWORD`: Basic Auth password for internal admin routes.
 
 ## Language behavior
 

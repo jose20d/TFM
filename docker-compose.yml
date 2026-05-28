@@ -32,6 +32,7 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
+      INTERNAL_ADMIN_TOKEN: ${INTERNAL_ADMIN_TOKEN}
     ports:
       - "8000:8000"
 
@@ -47,6 +48,9 @@ services:
     environment:
       BACKEND_API_URL: http://backend:8000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      INTERNAL_ADMIN_TOKEN: ${INTERNAL_ADMIN_TOKEN}
+      ADMIN_PANEL_USER: ${ADMIN_PANEL_USER}
+      ADMIN_PANEL_PASSWORD: ${ADMIN_PANEL_PASSWORD}
     ports:
       - "3000:3000"
 

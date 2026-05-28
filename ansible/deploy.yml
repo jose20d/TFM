@@ -1,13 +1,59 @@
 ---
-- name: Desplegar actualización de aplicación en staging
-  hosts: staging
+- name: Desplegar actualización de aplicación en production
+  hosts: production
   become: false
   gather_facts: false
 
   vars:
     app_dir: /opt/tfm-geocontext
+    runtime_env:
+      DB_HOST: "{{ lookup('ansible.builtin.env', 'DB_HOST') }}"
+      DB_PORT: "{{ lookup('ansible.builtin.env', 'DB_PORT') }}"
+      DB_NAME: "{{ lookup('ansible.builtin.env', 'DB_NAME') }}"
+      DB_USER: "{{ lookup('ansible.builtin.env', 'DB_USER') }}"
+      DB_PASSWORD: "{{ lookup('ansible.builtin.env', 'DB_PASSWORD') }}"
+      NEXT_PUBLIC_API_URL: "{{ lookup('ansible.builtin.env', 'NEXT_PUBLIC_API_URL') }}"
+      INTERNAL_ADMIN_TOKEN: "{{ lookup('ansible.builtin.env', 'INTERNAL_ADMIN_TOKEN') }}"
+      ADMIN_PANEL_USER: "{{ lookup('ansible.builtin.env', 'ADMIN_PANEL_USER') }}"
+      ADMIN_PANEL_PASSWORD: "{{ lookup('ansible.builtin.env', 'ADMIN_PANEL_PASSWORD') }}"
+      ETL_SCHEDULE_CRON: "{{ lookup('ansible.builtin.env', 'ETL_SCHEDULE_CRON') | default('0 3 1 * *', true) }}"
+      ETL_TIMEZONE: "{{ lookup('ansible.builtin.env', 'ETL_TIMEZONE') | default('America/Costa_Rica', true) }}"
 
   tasks:
+    # Valida que los secretos críticos estén definidos en GitHub Secrets.
+    - name: Validar variables críticas de runtime
+      ansible.builtin.assert:
+        that:
+          - runtime_env.DB_HOST | length > 0
+          - runtime_env.DB_PORT | length > 0
+          - runtime_env.DB_NAME | length > 0
+          - runtime_env.DB_USER | length > 0
+          - runtime_env.DB_PASSWORD | length > 0
+          - runtime_env.NEXT_PUBLIC_API_URL | length > 0
+          - runtime_env.INTERNAL_ADMIN_TOKEN | length > 0
+          - runtime_env.ADMIN_PANEL_USER | length > 0
+          - runtime_env.ADMIN_PANEL_PASSWORD | length > 0
+        fail_msg: "Faltan secretos requeridos para generar /opt/tfm-geocontext/.env"
+
+    # Materializa .env en el servidor con valores provenientes de GitHub Secrets.
+    - name: Escribir archivo .env de runtime en servidor
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/.env"
+        mode: "0600"
+        content: |
+          DB_HOST={{ runtime_env.DB_HOST }}
+          DB_PORT={{ runtime_env.DB_PORT }}
+          DB_NAME={{ runtime_env.DB_NAME }}
+          DB_USER={{ runtime_env.DB_USER }}
+          DB_PASSWORD={{ runtime_env.DB_PASSWORD }}
+          NEXT_PUBLIC_API_URL={{ runtime_env.NEXT_PUBLIC_API_URL }}
+          INTERNAL_ADMIN_TOKEN={{ runtime_env.INTERNAL_ADMIN_TOKEN }}
+          ADMIN_PANEL_USER={{ runtime_env.ADMIN_PANEL_USER }}
+          ADMIN_PANEL_PASSWORD={{ runtime_env.ADMIN_PANEL_PASSWORD }}
+          ETL_SCHEDULE_CRON={{ runtime_env.ETL_SCHEDULE_CRON }}
+          ETL_TIMEZONE={{ runtime_env.ETL_TIMEZONE }}
+      no_log: true
+
     # Sincroniza código con rama principal remota.
     - name: Actualizar repositorio (git pull origin main)
       ansible.builtin.command:

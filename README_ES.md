@@ -61,6 +61,32 @@ docker compose --profile jobs run --rm etl
 - Backend/API: `http://127.0.0.1:8000/`
 - OpenAPI docs: `http://127.0.0.1:8000/docs`
 
+## Despliegue en producción
+
+- Workflow de GitHub Actions: `.github/workflows/deploy-production.yml`.
+- Disparo: push a `main`.
+- El playbook de deploy (`ansible/deploy.yml`) ahora escribe `/opt/tfm-geocontext/.env` desde GitHub Secrets antes de `docker compose up -d`.
+- Secrets recomendados en el repositorio:
+  - `EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`
+  - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+  - `NEXT_PUBLIC_API_URL`
+  - `INTERNAL_ADMIN_TOKEN`, `ADMIN_PANEL_USER`, `ADMIN_PANEL_PASSWORD`
+  - `ETL_SCHEDULE_CRON`, `ETL_TIMEZONE` (opcionales)
+
+## HTTPS (Let's Encrypt)
+
+- Dominio productivo previsto: `geocontext.app` (con `www.geocontext.app` opcional).
+- Flujo recomendado:
+  1. Publicar DNS (`A`) de `geocontext.app` y `www` hacia la IP pública EC2.
+  2. Aplicar configuración HTTP base:
+     `ansible-playbook -i ansible/inventory.ini ansible/nginx.yml`
+  3. Emitir certificado y activar TLS:
+     `ansible-playbook -i ansible/inventory.ini ansible/https.yml`
+- El playbook `ansible/https.yml`:
+  - solicita certificado por webroot (`/var/www/certbot`),
+  - activa redirección HTTP->HTTPS,
+  - instala hook de renovación para recargar Nginx.
+
 ## Notas ETL
 
 - Módulo principal ETL: `etl/run_etl.py`
@@ -99,7 +125,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 
 ## Restricciones arquitectónicas clave
 
-- No hay staging JSON en la ruta principal ETL.
+- No hay capa JSON intermedia en la ruta principal ETL.
 - `dataset_config` es el registro de metadatos.
 - El ETL sigue siendo proceso finito (ejecuta y termina), sin scheduler interno.
 - El ETL en Docker corre bajo el profile `jobs` para no ejecutarse al levantar web.

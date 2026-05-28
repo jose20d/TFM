@@ -1,0 +1,74 @@
+---
+- name: Habilitar HTTPS con Let's Encrypt en production
+  hosts: production
+  become: true
+  gather_facts: true
+
+  vars:
+    geocontext_domain: geocontext.app
+    geocontext_alt_domains:
+      - www.geocontext.app
+    letsencrypt_email: admin@geocontext.app
+    certbot_webroot: /var/www/certbot
+
+  tasks:
+    - name: Validar email para Let's Encrypt
+      ansible.builtin.assert:
+        that:
+          - letsencrypt_email is string
+          - "'@' in letsencrypt_email"
+        fail_msg: "Define letsencrypt_email válido (ejemplo: ops@geocontext.app)."
+
+    - name: Instalar certbot
+      ansible.builtin.apt:
+        name:
+          - certbot
+        state: present
+        update_cache: true
+
+    - name: Crear webroot para desafíos ACME
+      ansible.builtin.file:
+        path: "{{ certbot_webroot }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Solicitar/renovar certificado Let's Encrypt por webroot
+      ansible.builtin.command: >-
+        certbot certonly --webroot -w {{ certbot_webroot }}
+        -d {{ geocontext_domain }}
+        {% for domain in geocontext_alt_domains %}-d {{ domain }} {% endfor %}
+        --email {{ letsencrypt_email }} --agree-tos --non-interactive --keep-until-expiring
+      register: certbot_result
+      changed_when: >-
+        ('Successfully received certificate' in certbot_result.stdout) or
+        ('Congratulations' in certbot_result.stdout)
+
+    - name: Renderizar configuración HTTPS de GeoContext
+      ansible.builtin.template:
+        src: templates/geocontext-nginx-https.conf.j2
+        dest: /etc/nginx/sites-available/geocontext.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Validar configuración de nginx
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Reiniciar nginx para aplicar TLS
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+
+    - name: Crear hook de renovación para recargar nginx
+      ansible.builtin.copy:
+        dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          systemctl reload nginx
