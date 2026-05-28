@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from web.routers.analysis_router import router as analysis_router
 from web.routers.compare_router import router as compare_router
 from web.routers.explore_router import router as explore_router
+from web.routers.internal_metrics_router import router as internal_metrics_router
 from web.routers.overview_router import router as overview_router
 from web.routers.queries_router import router as queries_router
 from web.routers.terrain_router import router as terrain_router
@@ -41,4 +42,5 @@ app.include_router(analysis_router)
 app.include_router(compare_router)
 app.include_router(terrain_router)
 app.include_router(queries_router)
+app.include_router(internal_metrics_router)
 
