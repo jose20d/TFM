@@ -8,7 +8,7 @@
     geocontext_domain: geocontext.app
     geocontext_alt_domains:
       - www.geocontext.app
-    letsencrypt_email: admin@geocontext.app
+    letsencrypt_email: "{{ lookup('ansible.builtin.env', 'LETSENCRYPT_EMAIL') | default('admin@geocontext.app', true) }}"
     certbot_webroot: /var/www/certbot
 
   tasks:

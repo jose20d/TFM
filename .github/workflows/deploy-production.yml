@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ANSIBLE_HOST_KEY_CHECKING: "False"
+      LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
       DB_HOST: ${{ secrets.DB_HOST }}
       DB_PORT: ${{ secrets.DB_PORT }}
       DB_NAME: ${{ secrets.DB_NAME }}
@@ -55,6 +56,16 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
+          ansible-playbook -i ansible/inventory.ini ansible/nginx.yml \
+            -e "ansible_host=${EC2_HOST}" \
+            -e "ansible_user=${EC2_USER}" \
+            -e "ansible_ssh_private_key_file=${SSH_KEY_PATH}"
+
+          ansible-playbook -i ansible/inventory.ini ansible/https.yml \
+            -e "ansible_host=${EC2_HOST}" \
+            -e "ansible_user=${EC2_USER}" \
+            -e "ansible_ssh_private_key_file=${SSH_KEY_PATH}"
+
           ansible-playbook -i ansible/inventory.ini ansible/deploy.yml \
             -e "ansible_host=${EC2_HOST}" \
             -e "ansible_user=${EC2_USER}" \
