@@ -14,6 +14,9 @@ const MODES = [
   { id: "spatial" },
   { id: "profile" },
 ];
+const RESULTS_PAGE_SIZE = 1000;
+const EXPORT_CHUNK_SIZE = 100000;
+const API_MAX_LIMIT = 100000;
 
 const SpatialResultsMap = dynamic(() => import("./SpatialResultsMap"), { ssr: false });
 
@@ -56,6 +59,12 @@ function toNumberOrNull(value) {
   if (!hasText(value)) return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function clampLimit(value, fallback) {
+  const parsed = Number(value);
+  const base = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(API_MAX_LIMIT, Math.max(1, Math.trunc(base)));
 }
 
 function toCsv(rows) {
@@ -102,7 +111,8 @@ export default function ConsultasClient() {
   const [minerals, setMinerals] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState({ result_count: 0, summary: "", rows: [] });
+  const [result, setResult] = useState({ result_count: 0, total_count: 0, offset: 0, limit: 0, summary: "", rows: [] });
+  const [queryPage, setQueryPage] = useState(0);
 
   const [depositFilters, setDepositFilters] = useState({
     countryIso: "",
@@ -256,6 +266,134 @@ export default function ConsultasClient() {
     [activeMode, result.rows],
   );
 
+  function buildQueryUrl(modeId, { limit, offset }) {
+    const safeLimit = clampLimit(limit, RESULTS_PAGE_SIZE);
+    if (modeId === "deposits") {
+      const qs = new URLSearchParams({
+        country_iso3: depositFilters.countryIso,
+        mineral: depositFilters.mineral,
+        deposit_status: depositFilters.status,
+        min_minerals: String(depositFilters.minMinerals),
+        limit: String(safeLimit),
+        offset: String(offset),
+      });
+      return `/api/v1/queries/deposits-by-mineral?${qs.toString()}`;
+    }
+    if (modeId === "combined") {
+      const qs = new URLSearchParams({
+        country_iso3: combinedFilters.countryIso,
+        mineral_a: combinedFilters.mineralA,
+        mineral_b: combinedFilters.mineralB,
+        exclude_mineral: combinedFilters.excludeMineral,
+        limit: String(safeLimit),
+        offset: String(offset),
+      });
+      return `/api/v1/queries/combined-minerals?${qs.toString()}`;
+    }
+    if (modeId === "spatial") {
+      if (!spatialFilters.countryIso || !spatialFilters.baseDepId) {
+        throw new Error(tr("Selecciona pais y deposito base para la consulta espacial.", "Select country and base deposit for spatial query."));
+      }
+      const qs = new URLSearchParams({
+        country_iso3: spatialFilters.countryIso,
+        base_dep_id: String(spatialFilters.baseDepId),
+        radius_km: String(spatialFilters.radiusKm),
+        mineral: spatialFilters.mineral,
+        limit: String(safeLimit),
+        offset: String(offset),
+      });
+      return `/api/v1/queries/spatial-nearby?${qs.toString()}`;
+    }
+
+    const gdpMinInput = toNumberOrNull(profileFilters.gdpMin);
+    const gdpMaxInput = toNumberOrNull(profileFilters.gdpMax);
+    const cpiMinInput = toNumberOrNull(profileFilters.cpiMin);
+    const cpiMaxInput = toNumberOrNull(profileFilters.cpiMax);
+    const fsiMinInput = toNumberOrNull(profileFilters.fsiMin);
+    const fsiMaxInput = toNumberOrNull(profileFilters.fsiMax);
+
+    const gdpMinRaw =
+      gdpMinInput !== null ? gdpMinInput * 1_000_000_000 : toNumberOrNull(profileBounds?.gdp_min);
+    const gdpMaxRaw =
+      gdpMaxInput !== null ? gdpMaxInput * 1_000_000_000 : toNumberOrNull(profileBounds?.gdp_max);
+    const cpiMinValue = cpiMinInput !== null ? cpiMinInput : toNumberOrNull(profileBounds?.cpi_min);
+    const cpiMaxValue = cpiMaxInput !== null ? cpiMaxInput : toNumberOrNull(profileBounds?.cpi_max);
+    const fsiMinValue = fsiMinInput !== null ? fsiMinInput : toNumberOrNull(profileBounds?.fsi_min);
+    const fsiMaxValue = fsiMaxInput !== null ? fsiMaxInput : toNumberOrNull(profileBounds?.fsi_max);
+
+    const qs = new URLSearchParams({
+      min_deposits: String(profileFilters.minDeposits),
+      limit: String(safeLimit),
+      offset: String(offset),
+    });
+    if (gdpMinRaw !== null) qs.set("gdp_min", String(gdpMinRaw));
+    if (gdpMaxRaw !== null) qs.set("gdp_max", String(gdpMaxRaw));
+    if (cpiMinValue !== null) qs.set("cpi_min", String(cpiMinValue));
+    if (cpiMaxValue !== null) qs.set("cpi_max", String(cpiMaxValue));
+    if (fsiMinValue !== null) qs.set("fsi_min", String(fsiMinValue));
+    if (fsiMaxValue !== null) qs.set("fsi_max", String(fsiMaxValue));
+    return `/api/v1/queries/country-profile?${qs.toString()}`;
+  }
+
+  async function fetchQueryPayload(modeId, { limit, offset }) {
+    const url = buildQueryUrl(modeId, { limit, offset });
+    const response = await fetch(withLang(url, lang), { cache: "no-store" });
+    const rawText = await response.text();
+    let payload = null;
+    if (rawText) {
+      try {
+        payload = JSON.parse(rawText);
+      } catch {
+        payload = null;
+      }
+    }
+    if (!response.ok) {
+      const detail = payload?.detail;
+      const detailText = Array.isArray(detail)
+        ? detail
+            .map((item) => {
+              if (typeof item === "string") return item;
+              if (item && typeof item === "object") {
+                const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
+                const msg = item.msg || "";
+                return [loc, msg].filter(Boolean).join(": ");
+              }
+              return String(item ?? "");
+            })
+            .filter(Boolean)
+            .join(" | ")
+        : typeof detail === "string"
+          ? detail
+          : rawText;
+      throw new Error(detailText || `HTTP ${response.status}`);
+    }
+    return payload || { result_count: 0, total_count: 0, summary: "", rows: [] };
+  }
+
+  async function collectRowsForExport(modeId) {
+    const allRows = [];
+    let offset = 0;
+    let totalCount = null;
+
+    while (true) {
+      const payload = await fetchQueryPayload(modeId, { limit: EXPORT_CHUNK_SIZE, offset });
+      const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+      const apiTotal = Number(payload?.total_count);
+      if (Number.isFinite(apiTotal) && apiTotal >= 0) {
+        totalCount = apiTotal;
+      }
+
+      allRows.push(...rows);
+      if (!rows.length) break;
+
+      offset += rows.length;
+      if (totalCount !== null && offset >= totalCount) break;
+      if (rows.length < EXPORT_CHUNK_SIZE) break;
+    }
+
+    return allRows;
+  }
+
   useEffect(() => {
     if (activeMode !== "spatial") return;
     if (!spatialFilters.countryIso || !spatialFilters.baseDepId) return;
@@ -269,7 +407,7 @@ export default function ConsultasClient() {
       base_dep_id: String(spatialFilters.baseDepId),
       radius_km: String(spatialFilters.radiusKm),
       mineral: spatialFilters.mineral,
-      limit: String(spatialFilters.limit),
+      limit: String(clampLimit(spatialFilters.limit, 150)),
     });
 
     fetch(withLang(`/api/v1/queries/spatial-nearby?${qs.toString()}`, lang), {
@@ -277,7 +415,15 @@ export default function ConsultasClient() {
       signal: controller.signal,
     })
       .then(async (response) => {
-        const payload = await response.json();
+        const rawText = await response.text();
+        let payload = null;
+        if (rawText) {
+          try {
+            payload = JSON.parse(rawText);
+          } catch {
+            payload = null;
+          }
+        }
         if (!response.ok) {
           const detail = payload?.detail;
           const detailText = Array.isArray(detail)
@@ -295,17 +441,17 @@ export default function ConsultasClient() {
                 .join(" | ")
             : typeof detail === "string"
               ? detail
-              : "";
+              : rawText;
           throw new Error(detailText || `HTTP ${response.status}`);
         }
         return payload;
       })
       .then((payload) => {
-        setResult(payload || { result_count: 0, summary: "", rows: [] });
+        setResult(payload || { result_count: 0, total_count: 0, offset: 0, limit: 0, summary: "", rows: [] });
       })
       .catch((queryError) => {
         if (queryError?.name === "AbortError") return;
-        setResult({ result_count: 0, summary: "", rows: [] });
+        setResult({ result_count: 0, total_count: 0, offset: 0, limit: 0, summary: "", rows: [] });
         setError(queryError?.message || (lang === "en" ? "Could not run query." : "No fue posible ejecutar la consulta."));
       })
       .finally(() => setLoading(false));
@@ -321,115 +467,62 @@ export default function ConsultasClient() {
     lang,
   ]);
 
-  async function runQuery() {
+  async function runQuery(targetPage = 0) {
     setLoading(true);
     setError("");
     try {
-      let url = "";
-      if (activeMode === "deposits") {
-        const qs = new URLSearchParams({
-          country_iso3: depositFilters.countryIso,
-          mineral: depositFilters.mineral,
-          deposit_status: depositFilters.status,
-          min_minerals: String(depositFilters.minMinerals),
-          limit: String(depositFilters.limit),
-        });
-        url = `/api/v1/queries/deposits-by-mineral?${qs.toString()}`;
-      } else if (activeMode === "combined") {
-        const qs = new URLSearchParams({
-          country_iso3: combinedFilters.countryIso,
-          mineral_a: combinedFilters.mineralA,
-          mineral_b: combinedFilters.mineralB,
-          exclude_mineral: combinedFilters.excludeMineral,
-          limit: String(combinedFilters.limit),
-        });
-        url = `/api/v1/queries/combined-minerals?${qs.toString()}`;
-      } else if (activeMode === "spatial") {
-        if (!spatialFilters.countryIso || !spatialFilters.baseDepId) {
-          setError(tr("Selecciona pais y deposito base para la consulta espacial.", "Select country and base deposit for spatial query."));
-          setLoading(false);
-          return;
-        }
-        const qs = new URLSearchParams({
-          country_iso3: spatialFilters.countryIso,
-          base_dep_id: String(spatialFilters.baseDepId),
-          radius_km: String(spatialFilters.radiusKm),
-          mineral: spatialFilters.mineral,
-          limit: String(spatialFilters.limit),
-        });
-        url = `/api/v1/queries/spatial-nearby?${qs.toString()}`;
-      } else {
-        const gdpMinInput = toNumberOrNull(profileFilters.gdpMin);
-        const gdpMaxInput = toNumberOrNull(profileFilters.gdpMax);
-        const cpiMinInput = toNumberOrNull(profileFilters.cpiMin);
-        const cpiMaxInput = toNumberOrNull(profileFilters.cpiMax);
-        const fsiMinInput = toNumberOrNull(profileFilters.fsiMin);
-        const fsiMaxInput = toNumberOrNull(profileFilters.fsiMax);
-
-        const gdpMinRaw =
-          gdpMinInput !== null ? gdpMinInput * 1_000_000_000 : toNumberOrNull(profileBounds?.gdp_min);
-        const gdpMaxRaw =
-          gdpMaxInput !== null ? gdpMaxInput * 1_000_000_000 : toNumberOrNull(profileBounds?.gdp_max);
-        const cpiMinValue = cpiMinInput !== null ? cpiMinInput : toNumberOrNull(profileBounds?.cpi_min);
-        const cpiMaxValue = cpiMaxInput !== null ? cpiMaxInput : toNumberOrNull(profileBounds?.cpi_max);
-        const fsiMinValue = fsiMinInput !== null ? fsiMinInput : toNumberOrNull(profileBounds?.fsi_min);
-        const fsiMaxValue = fsiMaxInput !== null ? fsiMaxInput : toNumberOrNull(profileBounds?.fsi_max);
-
-        const qs = new URLSearchParams({
-          min_deposits: String(profileFilters.minDeposits),
-          limit: String(profileFilters.limit),
-        });
-        if (gdpMinRaw !== null) qs.set("gdp_min", String(gdpMinRaw));
-        if (gdpMaxRaw !== null) qs.set("gdp_max", String(gdpMaxRaw));
-        if (cpiMinValue !== null) qs.set("cpi_min", String(cpiMinValue));
-        if (cpiMaxValue !== null) qs.set("cpi_max", String(cpiMaxValue));
-        if (fsiMinValue !== null) qs.set("fsi_min", String(fsiMinValue));
-        if (fsiMaxValue !== null) qs.set("fsi_max", String(fsiMaxValue));
-        url = `/api/v1/queries/country-profile?${qs.toString()}`;
+      if (activeMode === "combined" && (!hasText(combinedFilters.mineralA) || !hasText(combinedFilters.mineralB))) {
+        throw new Error(
+          tr(
+            "Selecciona Mineral A y Mineral B antes de ejecutar la consulta.",
+            "Select Mineral A and Mineral B before running the query.",
+          ),
+        );
       }
-
-      const response = await fetch(withLang(url, lang), { cache: "no-store" });
-      const payload = await response.json();
-      if (!response.ok) {
-        const detail = payload?.detail;
-        const detailText = Array.isArray(detail)
-          ? detail
-              .map((item) => {
-                if (typeof item === "string") return item;
-                if (item && typeof item === "object") {
-                  const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
-                  const msg = item.msg || "";
-                  return [loc, msg].filter(Boolean).join(": ");
-                }
-                return String(item ?? "");
-              })
-              .filter(Boolean)
-              .join(" | ")
-          : typeof detail === "string"
-            ? detail
-            : "";
-        throw new Error(detailText || `HTTP ${response.status}`);
-      }
-      setResult(payload || { result_count: 0, summary: "", rows: [] });
+      const page = Math.max(0, Number(targetPage) || 0);
+      const payload = await fetchQueryPayload(activeMode, {
+        limit: RESULTS_PAGE_SIZE,
+        offset: page * RESULTS_PAGE_SIZE,
+      });
+      setQueryPage(page);
+      setResult(payload);
     } catch (queryError) {
-      setResult({ result_count: 0, summary: "", rows: [] });
+      setResult({ result_count: 0, total_count: 0, offset: 0, limit: 0, summary: "", rows: [] });
       setError(queryError?.message || tr("No fue posible ejecutar la consulta.", "Could not run query."));
     } finally {
       setLoading(false);
     }
   }
 
-  function exportCsv() {
-    const csv = toCsv(result.rows || []);
-    downloadText(`consultas_${activeMode}.csv`, csv, "text/csv;charset=utf-8;");
+  async function exportCsv() {
+    setLoading(true);
+    setError("");
+    try {
+      const rows = await collectRowsForExport(activeMode);
+      const csv = toCsv(rows);
+      downloadText(`consultas_${activeMode}.csv`, csv, "text/csv;charset=utf-8;");
+    } catch (queryError) {
+      setError(queryError?.message || tr("No fue posible exportar CSV.", "Could not export CSV."));
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function exportJson() {
-    downloadText(
-      `consultas_${activeMode}.json`,
-      JSON.stringify(result.rows || [], null, 2),
-      "application/json;charset=utf-8;",
-    );
+  async function exportJson() {
+    setLoading(true);
+    setError("");
+    try {
+      const rows = await collectRowsForExport(activeMode);
+      downloadText(
+        `consultas_${activeMode}.json`,
+        JSON.stringify(rows, null, 2),
+        "application/json;charset=utf-8;",
+      );
+    } catch (queryError) {
+      setError(queryError?.message || tr("No fue posible exportar JSON.", "Could not export JSON."));
+    } finally {
+      setLoading(false);
+    }
   }
 
   function exportGeoJson() {
@@ -519,10 +612,10 @@ export default function ConsultasClient() {
             <input
               type="number"
               min={1}
-              max={1000}
+              max={100000}
               value={depositFilters.limit}
               onChange={(e) =>
-                setDepositFilters((p) => ({ ...p, limit: Math.max(1, Number(e.target.value) || 100) }))
+                setDepositFilters((p) => ({ ...p, limit: clampLimit(e.target.value, 100) }))
               }
             />
           </label>
@@ -594,10 +687,10 @@ export default function ConsultasClient() {
             <input
               type="number"
               min={1}
-              max={1000}
+              max={100000}
               value={combinedFilters.limit}
               onChange={(e) =>
-                setCombinedFilters((p) => ({ ...p, limit: Math.max(1, Number(e.target.value) || 100) }))
+                setCombinedFilters((p) => ({ ...p, limit: clampLimit(e.target.value, 100) }))
               }
             />
           </label>
@@ -673,10 +766,10 @@ export default function ConsultasClient() {
             <input
               type="number"
               min={1}
-              max={1000}
+              max={100000}
               value={spatialFilters.limit}
               onChange={(e) =>
-                setSpatialFilters((p) => ({ ...p, limit: Math.max(1, Number(e.target.value) || 150) }))
+                setSpatialFilters((p) => ({ ...p, limit: clampLimit(e.target.value, 150) }))
               }
             />
           </label>
@@ -790,10 +883,10 @@ export default function ConsultasClient() {
           <input
             type="number"
             min={1}
-            max={1000}
+            max={100000}
             value={profileFilters.limit}
             onChange={(e) =>
-              setProfileFilters((p) => ({ ...p, limit: Math.max(1, Number(e.target.value) || 200) }))
+              setProfileFilters((p) => ({ ...p, limit: clampLimit(e.target.value, 200) }))
             }
           />
           <span className={`${styles.inputHint} ${styles.inputHintPlaceholder}`} aria-hidden="true">
@@ -898,7 +991,8 @@ export default function ConsultasClient() {
                 className={activeMode === mode.id ? styles.tabBtnActive : styles.tabBtn}
                 onClick={() => {
                   setActiveMode(mode.id);
-                  setResult({ result_count: 0, summary: "", rows: [] });
+                  setResult({ result_count: 0, total_count: 0, offset: 0, limit: 0, summary: "", rows: [] });
+                  setQueryPage(0);
                   setError("");
                 }}
               >
@@ -946,7 +1040,7 @@ export default function ConsultasClient() {
         <section className="panel">
           <div className={styles.resultWrap}>
             <div className={styles.resultHeader}>
-              <p className={styles.resultCount}>{tr("Resultados", "Results")}: {formatNumber(result.result_count || 0)}</p>
+              <p className={styles.resultCount}>{tr("Resultados", "Results")}: {formatNumber(result.total_count || result.result_count || 0)}</p>
               <div className={styles.actionsRow}>
                 <button type="button" className={styles.mutedBtn} onClick={exportCsv}>
                   {t(lang, "queriesExportCsv")}
@@ -965,6 +1059,29 @@ export default function ConsultasClient() {
             <p className={`muted ${styles.summaryText}`}>
               {result.summary || tr("No se encontraron registros para los criterios seleccionados.", "No records found for selected criteria.")}
             </p>
+            {activeMode !== "spatial" && Number(result.total_count || 0) > 0 && (
+              <p className={`muted ${styles.summaryText}`}>
+                {tr("Mostrando", "Showing")} {formatNumber((result.offset || 0) + 1)}-
+                {formatNumber((result.offset || 0) + (result.result_count || 0))} {tr("de", "of")}{" "}
+                {formatNumber(result.total_count || 0)}.{" "}
+                {tr("Exporta CSV/JSON para obtener el total completo.", "Export CSV/JSON to get the full dataset.")}
+              </p>
+            )}
+            {activeMode !== "spatial" && Number(result.total_count || 0) > RESULTS_PAGE_SIZE && (
+              <div className={styles.actionsRow}>
+                <button type="button" className={styles.mutedBtn} onClick={() => runQuery(queryPage - 1)} disabled={queryPage <= 0 || loading}>
+                  {tr("Anterior", "Previous")}
+                </button>
+                <button
+                  type="button"
+                  className={styles.mutedBtn}
+                  onClick={() => runQuery(queryPage + 1)}
+                  disabled={(queryPage + 1) * RESULTS_PAGE_SIZE >= Number(result.total_count || 0) || loading}
+                >
+                  {tr("Siguiente", "Next")}
+                </button>
+              </div>
+            )}
 
             {renderTable()}
 

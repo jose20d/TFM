@@ -15,13 +15,14 @@ def deposits_by_mineral(
     deposit_status: str | None,
     min_minerals: int,
     limit: int,
+    offset: int,
     lang: str,
 ) -> dict:
     iso3 = (country_iso3 or "").strip().upper()
     mineral_q = (resolve_source_term("mineral", mineral) or "").strip()
     status_q = (deposit_status or "").strip()
 
-    sql = """
+    base_sql = """
         SELECT
             COALESCE(d.name, CONCAT('Deposito ', d.dep_id::text)) AS deposit_name,
             COALESCE(c.country_name, 'N/A') AS country_name,
@@ -55,12 +56,25 @@ def deposits_by_mineral(
         GROUP BY d.dep_id, d.name, c.country_name, c.iso3, d.dev_stat, d.latitude, d.longitude
         HAVING COUNT(DISTINCT TRIM(mc.commod))
                 FILTER (WHERE mc.commod IS NOT NULL AND TRIM(mc.commod) <> '') >= %s
+    """
+    count_sql = f"SELECT COUNT(*) AS total FROM ({base_sql}) q"
+    total_row = fetch_one(
+        count_sql,
+        (iso3, iso3, status_q, status_q, mineral_q, mineral_q, min_minerals),
+    )
+    total_count = int(total_row.get("total") or 0)
+
+    sql = (
+        base_sql
+        + """
         ORDER BY COALESCE(c.country_name, 'N/A'), COALESCE(d.name, '')
         LIMIT %s
+        OFFSET %s
     """
+    )
     rows = fetch_all(
         sql,
-        (iso3, iso3, status_q, status_q, mineral_q, mineral_q, min_minerals, limit),
+        (iso3, iso3, status_q, status_q, mineral_q, mineral_q, min_minerals, limit, offset),
     )
 
     results = []
@@ -82,9 +96,12 @@ def deposits_by_mineral(
     return localize_payload({
         "mode": "deposits_by_mineral",
         "result_count": len(results),
+        "total_count": total_count,
+        "offset": offset,
+        "limit": limit,
         "summary": (
-            f"Se encontraron {len(results)} depositos que cumplen los criterios seleccionados."
-            if results
+            f"Se encontraron {total_count} depositos que cumplen los criterios seleccionados."
+            if total_count
             else "No se encontraron registros para los criterios seleccionados."
         ),
         "rows": results,
@@ -97,6 +114,7 @@ def combined_minerals(
     mineral_b: str,
     exclude_mineral: str | None,
     limit: int,
+    offset: int,
     lang: str,
 ) -> dict:
     iso3 = (country_iso3 or "").strip().upper()
@@ -106,7 +124,7 @@ def combined_minerals(
     if not mineral_a_q or not mineral_b_q:
         raise HTTPException(status_code=400, detail="mineral_a and mineral_b are required.")
 
-    sql = """
+    base_sql = """
         SELECT
             COALESCE(d.name, CONCAT('Deposito ', d.dep_id::text)) AS deposit_name,
             COALESCE(c.country_name, 'N/A') AS country_name,
@@ -148,15 +166,26 @@ def combined_minerals(
             )
           )
         GROUP BY d.dep_id, d.name, c.country_name, c.iso3
+    """
+    count_sql = f"SELECT COUNT(*) AS total FROM ({base_sql}) q"
+    total_row = fetch_one(
+        count_sql,
+        (iso3, iso3, mineral_a_q, mineral_b_q, exclude_q, exclude_q),
+    )
+    total = int(total_row.get("total") or 0)
+
+    sql = (
+        base_sql
+        + """
         ORDER BY COALESCE(c.country_name, 'N/A'), COALESCE(d.name, '')
         LIMIT %s
+        OFFSET %s
     """
+    )
     rows = fetch_all(
         sql,
-        (iso3, iso3, mineral_a_q, mineral_b_q, exclude_q, exclude_q, limit),
+        (iso3, iso3, mineral_a_q, mineral_b_q, exclude_q, exclude_q, limit, offset),
     )
-
-    total = len(rows)
     results = [
         {
             "deposit": row.get("deposit_name") or "N/A",
@@ -169,7 +198,10 @@ def combined_minerals(
 
     return localize_payload({
         "mode": "combined_minerals",
-        "result_count": total,
+        "result_count": len(results),
+        "total_count": total,
+        "offset": offset,
+        "limit": limit,
         "summary": (
             f"Se encontraron {total} depositos donde {mineral_a_q} y {mineral_b_q} aparecen juntos."
             if total
@@ -190,6 +222,7 @@ def spatial_nearby(
     radius_km: float,
     mineral: str | None,
     limit: int,
+    offset: int,
     lang: str,
 ) -> dict:
     iso3 = (country_iso3 or "").strip().upper()
@@ -279,6 +312,7 @@ def spatial_nearby(
                 GROUP BY d.dep_id, d.name, c.country_name, d.latitude, d.longitude, b.base_geog
                 ORDER BY distance_km ASC, COALESCE(d.name, '')
                 LIMIT %s
+                OFFSET %s
                 """,
                 (
                     base_dep["lng"],
@@ -289,6 +323,7 @@ def spatial_nearby(
                     mineral_q,
                     mineral_q,
                     limit,
+                    offset,
                 ),
             )
             nearby_rows = cur.fetchall()
@@ -310,6 +345,9 @@ def spatial_nearby(
         "base_deposit": base_dep,
         "radius_km": round(float(radius_km), 2),
         "result_count": len(rows),
+        "total_count": len(rows) if offset == 0 else None,
+        "offset": offset,
+        "limit": limit,
         "summary": (
             f"Se encontraron {len(rows)} depositos cercanos al punto base."
             if rows
@@ -328,9 +366,10 @@ def country_profile(
     fsi_min: float | None,
     fsi_max: float | None,
     limit: int,
+    offset: int,
     lang: str,
 ) -> dict:
-    sql = """
+    base_sql = """
         WITH country_bucket AS (
             SELECT DISTINCT ON (c.iso3)
                    c.iso3,
@@ -378,27 +417,37 @@ def country_profile(
           AND (%s::numeric IS NULL OR cpi <= %s::numeric)
           AND (%s::numeric IS NULL OR fsi >= %s::numeric)
           AND (%s::numeric IS NULL OR fsi <= %s::numeric)
+    """
+    base_params = (
+        min_deposits,
+        gdp_min,
+        gdp_min,
+        gdp_max,
+        gdp_max,
+        cpi_min,
+        cpi_min,
+        cpi_max,
+        cpi_max,
+        fsi_min,
+        fsi_min,
+        fsi_max,
+        fsi_max,
+    )
+    count_sql = f"SELECT COUNT(*) AS total FROM ({base_sql}) q"
+    total_row = fetch_one(count_sql, base_params)
+    total_count = int(total_row.get("total") or 0)
+
+    sql = (
+        base_sql
+        + """
         ORDER BY total_deposits DESC, country_name
         LIMIT %s
+        OFFSET %s
     """
+    )
     rows = fetch_all(
         sql,
-        (
-            min_deposits,
-            gdp_min,
-            gdp_min,
-            gdp_max,
-            gdp_max,
-            cpi_min,
-            cpi_min,
-            cpi_max,
-            cpi_max,
-            fsi_min,
-            fsi_min,
-            fsi_max,
-            fsi_max,
-            limit,
-        ),
+        base_params + (limit, offset),
     )
 
     results = []
@@ -423,9 +472,12 @@ def country_profile(
     return localize_payload({
         "mode": "country_profile",
         "result_count": len(results),
+        "total_count": total_count,
+        "offset": offset,
+        "limit": limit,
         "summary": (
-            f"{len(results)} paises cumplen los criterios seleccionados."
-            if results
+            f"{total_count} paises cumplen los criterios seleccionados."
+            if total_count
             else "No se encontraron registros para los criterios seleccionados."
         ),
         "rows": results,
