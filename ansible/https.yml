@@ -12,6 +12,7 @@
     certbot_webroot: /var/www/certbot
 
   tasks:
+    # Verifica configuración mínima requerida para solicitar certificados.
     - name: Validar email para Let's Encrypt
       ansible.builtin.assert:
         that:
@@ -19,12 +20,36 @@
           - "'@' in letsencrypt_email"
         fail_msg: "Define letsencrypt_email válido (ejemplo: ops@geocontext.app)."
 
-    - name: Instalar certbot
+    # Instala Certbot y plugin de Nginx como solicita el requerimiento.
+    - name: Instalar certbot y plugin nginx
       ansible.builtin.apt:
         name:
           - certbot
+          - python3-certbot-nginx
         state: present
         update_cache: true
+
+    # Confirma que Nginx esté activo antes de emitir certificados.
+    - name: Verificar que nginx esté activo
+      ansible.builtin.service_facts:
+
+    - name: Validar estado running de nginx
+      ansible.builtin.assert:
+        that:
+          - "'nginx.service' in ansible_facts.services"
+          - ansible_facts.services['nginx.service'].state == 'running'
+        fail_msg: "Nginx no está corriendo. Ejecuta ansible/nginx.yml antes de HTTPS."
+
+    # Verifica resolución DNS para dominio raíz y www desde la EC2.
+    - name: Validar resolución DNS de geocontext.app
+      ansible.builtin.command: getent hosts {{ geocontext_domain }}
+      register: dns_root_check
+      changed_when: false
+
+    - name: Validar resolución DNS de www.geocontext.app
+      ansible.builtin.command: getent hosts {{ geocontext_alt_domains[0] }}
+      register: dns_www_check
+      changed_when: false
 
     - name: Crear webroot para desafíos ACME
       ansible.builtin.file:
@@ -34,6 +59,7 @@
         group: root
         mode: "0755"
 
+    # Emite (o renueva) certificado para dominio principal y alterno.
     - name: Solicitar/renovar certificado Let's Encrypt por webroot
       ansible.builtin.command: >-
         certbot certonly --webroot -w {{ certbot_webroot }}
@@ -45,6 +71,7 @@
         ('Successfully received certificate' in certbot_result.stdout) or
         ('Congratulations' in certbot_result.stdout)
 
+    # Instala configuración TLS de Nginx con redirect 80 -> 443.
     - name: Renderizar configuración HTTPS de GeoContext
       ansible.builtin.template:
         src: templates/geocontext-nginx-https.conf.j2
@@ -62,6 +89,21 @@
         name: nginx
         state: restarted
 
+    # Comprueba que HTTPS responda correctamente desde la propia instancia.
+    - name: Verificar endpoint HTTPS de geocontext.app
+      ansible.builtin.uri:
+        url: https://{{ geocontext_domain }}
+        method: GET
+        status_code: [200, 301, 302]
+        validate_certs: true
+
+    # Certbot instala timer automático; se fuerza habilitado para renovación continua.
+    - name: Habilitar timer de renovación automática de certbot
+      ansible.builtin.service:
+        name: certbot.timer
+        enabled: true
+        state: started
+
     - name: Crear hook de renovación para recargar nginx
       ansible.builtin.copy:
         dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
@@ -72,3 +114,8 @@
           #!/usr/bin/env bash
           set -euo pipefail
           systemctl reload nginx
+
+    # Valida el flujo de renovación automática sin consumir cuota real.
+    - name: Probar renovación automática de certificados (dry-run)
+      ansible.builtin.command: certbot renew --dry-run
+      changed_when: false

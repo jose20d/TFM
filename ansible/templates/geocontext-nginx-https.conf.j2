@@ -1,17 +1,22 @@
-# GeoContext production HTTPS reverse proxy (Let's Encrypt).
+# GeoContext production HTTPS reverse proxy.
+# Este template define:
+# - challenge ACME en 80 para renovar certificados
+# - redirección automática HTTP -> HTTPS
+# - TLS en 443 con certificados de Let's Encrypt
 {% set all_domains = [geocontext_domain] + (geocontext_alt_domains | default([])) %}
+
 server {
     listen 80;
     listen [::]:80;
     server_name {{ all_domains | join(' ') }};
 
-    # Permite renovación automática por webroot.
+    # Endpoint requerido por Let's Encrypt (webroot mode).
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
         try_files $uri =404;
     }
 
-    # Todo lo demás redirige a HTTPS.
+    # Todo el tráfico normal se fuerza a HTTPS.
     location / {
         return 301 https://$host$request_uri;
     }
@@ -22,6 +27,7 @@ server {
     listen [::]:443 ssl http2;
     server_name {{ all_domains | join(' ') }};
 
+    # Certificados emitidos por Let's Encrypt.
     ssl_certificate /etc/letsencrypt/live/{{ geocontext_domain }}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/{{ geocontext_domain }}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
