@@ -118,4 +118,23 @@
     # Valida el flujo de renovación automática sin consumir cuota real.
     - name: Probar renovación automática de certificados (dry-run)
       ansible.builtin.command: certbot renew --dry-run
+      register: certbot_dry_run_result
+      retries: 3
+      delay: 20
+      until: certbot_dry_run_result.rc == 0
+      failed_when: >-
+        certbot_dry_run_result.rc != 0 and
+        ('rateLimited' not in (certbot_dry_run_result.stderr | default(''))) and
+        ('Service busy; retry later' not in (certbot_dry_run_result.stderr | default('')))
       changed_when: false
+
+    - name: Avisar si dry-run no bloqueante por rate limit temporal
+      ansible.builtin.debug:
+        msg: >-
+          Certbot dry-run devolvió rate limit temporal de Let's Encrypt.
+          El certificado activo sigue válido; reintentar más tarde.
+      when: >-
+        certbot_dry_run_result.rc != 0 and (
+          'rateLimited' in (certbot_dry_run_result.stderr | default('')) or
+          'Service busy; retry later' in (certbot_dry_run_result.stderr | default(''))
+        )
