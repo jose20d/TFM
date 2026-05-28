@@ -1,6 +1,6 @@
 ---
-- name: Configurar Nginx reverse proxy para staging
-  hosts: staging
+- name: Configurar Nginx reverse proxy para production
+  hosts: production
   become: true
   gather_facts: true
 
@@ -29,7 +29,7 @@
         path: /etc/nginx/sites-available/default
         state: absent
 
-    # Renderiza server block principal para staging HTTP.
+    # Renderiza server block principal para production HTTP.
     - name: Crear configuración Nginx de GeoContext
       ansible.builtin.template:
         src: templates/geocontext-nginx.conf.j2

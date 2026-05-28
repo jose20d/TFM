@@ -1,6 +1,6 @@
 ---
-- name: Bootstrap base para EC2 staging (Ubuntu 24.04)
-  hosts: staging
+- name: Bootstrap base para EC2 production (Ubuntu 24.04)
+  hosts: production
   become: true
   gather_facts: true
 

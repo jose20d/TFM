@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# Infraestructura inicial (staging) para TFM GeoContext
+# Infraestructura inicial (production) para TFM GeoContext
 # Enfoque: simple, explícito y orientado a aprendizaje.
 # ------------------------------------------------------------
 
@@ -7,7 +7,7 @@
 locals {
   common_tags = {
     Project     = "TFM"
-    Environment = "staging"
+    Environment = "production"
   }
 
   # Elastic IP opcional:
@@ -91,7 +91,7 @@ resource "aws_route_table_association" "public_assoc" {
 #    - El acceso a la aplicación ocurre exclusivamente vía Nginx en 80/443.
 resource "aws_security_group" "ec2_basic" {
   name        = "tfm-staging-ec2-sg"
-  description = "Acceso basico para EC2 de TFM staging"
+  description = "Acceso basico para EC2 de TFM production"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -145,7 +145,7 @@ resource "aws_key_pair" "staging" {
   })
 }
 
-# 6) Instancia EC2 Ubuntu 24.04 para staging.
+# 6) Instancia EC2 Ubuntu 24.04 para production.
 #    Se usa t3.small como mínimo recomendado para soportar build Docker/Next.js
 #    sin los límites de RAM/CPU observados en t3.micro.
 #    Usa el key pair creado arriba para habilitar SSH seguro.
@@ -156,7 +156,7 @@ resource "aws_instance" "app" {
   vpc_security_group_ids      = [aws_security_group.ec2_basic.id]
   associate_public_ip_address = true
   key_name                    = aws_key_pair.staging.key_name
-  # Root disk ampliado en staging por espacio insuficiente durante builds
+  # Root disk ampliado en production por espacio insuficiente durante builds
   # Docker/Next.js (error ENOSPC en disco de 8 GB).
   root_block_device {
     volume_type = "gp3"
