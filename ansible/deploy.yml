@@ -89,3 +89,26 @@
     - name: Imprimir salida de docker compose ps
       ansible.builtin.debug:
         msg: "{{ compose_ps_result.stdout_lines }}"
+
+    # Falla el deploy si el backend no logra conectar a la base de datos.
+    - name: Verificar health del backend
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8000/api/v1/health
+        method: GET
+        return_content: true
+        status_code: 200
+      register: backend_health
+      retries: 12
+      delay: 5
+      until: backend_health.status == 200
+      changed_when: false
+
+    - name: Validar conectividad DB reportada por health
+      ansible.builtin.assert:
+        that:
+          - backend_health.json.status == "ok"
+          - backend_health.json.db | bool
+        fail_msg: >-
+          El backend respondió health sin conexión DB.
+          status={{ backend_health.json.status | default('missing') }},
+          db={{ backend_health.json.db | default('missing') }}.
