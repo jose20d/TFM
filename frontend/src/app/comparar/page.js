@@ -2,8 +2,8 @@ import { Suspense } from "react";
 import CompareClient from "./CompareClient";
 
 export const metadata = {
-  title: "GeoContext | Comparar",
-  description: "Comparacion de indicadores geologicos y socioeconomicos entre paises.",
+  title: "GeoContext | Compare",
+  description: "Comparison of geological and socioeconomic indicators across countries.",
 };
 
 export default function CompararPage() {

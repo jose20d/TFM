@@ -7,11 +7,11 @@ import L from "leaflet";
 const DEFAULT_CENTER = [15, -20];
 const DEFAULT_ZOOM = 2;
 
-function formatNumber(value, decimals = 0) {
+function formatNumber(value, decimals = 0, locale = "es-ES") {
   if (value === null || value === undefined) return "N/A";
   const num = Number(value);
   if (!Number.isFinite(num)) return "N/A";
-  return new Intl.NumberFormat("es-ES", {
+  return new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(num);
@@ -39,7 +39,9 @@ function SpatialAutoZoom({ rows }) {
   return null;
 }
 
-export default function SpatialResultsMap({ rows }) {
+export default function SpatialResultsMap({ rows, lang = "es" }) {
+  const locale = lang === "en" ? "en-US" : "es-ES";
+  const tr = (es, en) => (lang === "en" ? en : es);
   return (
     <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} style={{ height: "100%", width: "100%" }}>
       <TileLayer
@@ -66,9 +68,9 @@ export default function SpatialResultsMap({ rows }) {
             <Tooltip direction="top" offset={[0, -2]}>
               <strong>{row.deposit}</strong>
               <br />
-              Distancia: {formatNumber(row.distance_km, 2)} km
+              {tr("Distancia", "Distance")}: {formatNumber(row.distance_km, 2, locale)} km
               <br />
-              Minerales: {Array.isArray(row.minerals) ? row.minerals.join(", ") || "N/A" : "N/A"}
+              {tr("Minerales", "Minerals")}: {Array.isArray(row.minerals) ? row.minerals.join(", ") || "N/A" : "N/A"}
             </Tooltip>
           </CircleMarker>
         );
