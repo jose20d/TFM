@@ -1,8 +1,8 @@
 import TerrenoClientWrapper from "./TerrenoClientWrapper";
 
 export const metadata = {
-  title: "GeoContext | Terreno",
-  description: "Prospeccion exploratoria para entusiastas y coleccionistas.",
+  title: "GeoContext | Terrain",
+  description: "Exploratory prospecting tools for enthusiasts and collectors.",
 };
 
 export default function TerrenoPage() {

@@ -9,6 +9,20 @@ from web.services.common.i18n_service import localize_payload
 from web.services.common.i18n_service import resolve_source_term
 
 
+def _tr(lang: str, es: str, en: str) -> str:
+    return en if (lang or "").strip().lower() == "en" else es
+
+
+def _localize_region(value: str | None, lang: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return _tr(lang, "Sin region", "Unknown region")
+    lowered = raw.lower()
+    if lowered in {"sin region", "sin región", "unknown region"}:
+        return _tr(lang, "Sin region", "Unknown region")
+    return raw
+
+
 def _safe_geojson(value: str | None) -> dict:
     if not value:
         return {}
@@ -450,7 +464,11 @@ def zone_interest(country_iso3: str, lat: float, lng: float, radius_km: float, l
         "zone_geojson": zone_geojson,
     }
     if deposit_count == 0:
-        response["message"] = "No se encontraron depositos registrados dentro del radio seleccionado."
+        response["message"] = _tr(
+            lang,
+            "No se encontraron depositos registrados dentro del radio seleccionado.",
+            "No registered deposits were found within the selected radius.",
+        )
     return localize_payload(response, lang)
 
 
@@ -526,7 +544,11 @@ def frequent_minerals(
                     "coexistence": [],
                     "available_minerals": [],
                     "points_geojson": {},
-                    "message": "No se encontraron minerales asociados para esta seleccion.",
+                    "message": _tr(
+                        lang,
+                        "No se encontraron minerales asociados para esta seleccion.",
+                        "No associated minerals were found for this selection.",
+                    ),
                 }, lang)
 
             dep_ids = [int(row[0]) for row in deposit_rows]
@@ -649,7 +671,7 @@ def frequent_minerals(
         )
         top_regions.append(
             {
-                "region": region,
+                "region": _localize_region(region, lang),
                 "dominant_mineral": dominant,
                 "deposit_count": len(region_dep_ids),
             }
@@ -659,7 +681,7 @@ def frequent_minerals(
 
     max_minerals_per_deposit = max((len(values) for values in minerals_by_deposit.values()), default=1)
     heat_points: list[dict] = []
-    for dep_id, name, dep_lat, dep_lng, _region in deposit_rows:
+    for dep_id, name, dep_lat, dep_lng, region in deposit_rows:
         dep_id_int = int(dep_id)
         deposit_minerals = minerals_by_deposit.get(dep_id_int, set())
         if focus_mineral and focus_mineral in deposit_minerals:
@@ -684,6 +706,7 @@ def frequent_minerals(
                 "lng": float(dep_lng),
                 "weight": round(float(weight), 3),
                 "mineral": marker_mineral,
+                "region": _localize_region(region, lang),
             }
         )
 
@@ -780,13 +803,17 @@ def exploratory_potential(country_iso3: str, mineral: str, intensity_level: str,
                     "intensity_level": level,
                     "radius_km": radius_km,
                     "total_deposits": len(deposit_rows),
-                    "spatial_classification": "concentracion dispersa",
-                    "spatial_pattern": "insuficiente",
+                    "spatial_classification": _tr(lang, "concentracion dispersa", "dispersed concentration"),
+                    "spatial_pattern": _tr(lang, "insuficiente", "insufficient"),
                     "clusters": [],
                     "heat_points": [],
                     "top_regions": [],
                     "points_geojson": {},
-                    "message": "No se encontraron suficientes registros para identificar patrones espaciales.",
+                    "message": _tr(
+                        lang,
+                        "No se encontraron suficientes registros para identificar patrones espaciales.",
+                        "Not enough records were found to identify spatial patterns.",
+                    ),
                 }, lang)
 
             cur.execute(
@@ -975,14 +1002,14 @@ def exploratory_potential(country_iso3: str, mineral: str, intensity_level: str,
     clustered_deposits = sum(int(row[1]) for row in cluster_rows if int(row[0]) != -1)
     clustered_ratio = (clustered_deposits / total_deposits) if total_deposits else 0.0
     if clustered_ratio >= 0.6:
-        spatial_classification = "concentracion alta"
-        spatial_pattern = "agrupado"
+        spatial_classification = _tr(lang, "concentracion alta", "high concentration")
+        spatial_pattern = _tr(lang, "agrupado", "clustered")
     elif clustered_ratio >= 0.3:
-        spatial_classification = "concentracion media"
-        spatial_pattern = "mixto"
+        spatial_classification = _tr(lang, "concentracion media", "medium concentration")
+        spatial_pattern = _tr(lang, "mixto", "mixed")
     else:
-        spatial_classification = "concentracion dispersa"
-        spatial_pattern = "disperso"
+        spatial_classification = _tr(lang, "concentracion dispersa", "dispersed concentration")
+        spatial_pattern = _tr(lang, "disperso", "dispersed")
 
     max_cluster_size = max((int(row[1]) for row in cluster_rows), default=1)
     cluster_size_by_id = {int(cluster_id): int(dep_count) for cluster_id, dep_count, *_ in cluster_rows}
@@ -999,7 +1026,7 @@ def exploratory_potential(country_iso3: str, mineral: str, intensity_level: str,
                 "lng": float(dep_lng),
                 "weight": round(weight, 3),
                 "mineral": mineral_target,
-                "region": region,
+                "region": _localize_region(region, lang),
                 "cluster_id": int(cluster_id),
                 "cluster_size": int(local_count),
             }
@@ -1018,7 +1045,7 @@ def exploratory_potential(country_iso3: str, mineral: str, intensity_level: str,
         )
 
     top_regions = [
-        {"region": region, "deposit_count": int(dep_count)}
+        {"region": _localize_region(region, lang), "deposit_count": int(dep_count)}
         for region, dep_count in top_region_rows
     ]
 
@@ -1037,9 +1064,12 @@ def exploratory_potential(country_iso3: str, mineral: str, intensity_level: str,
         "top_regions": top_regions,
         "heat_points": heat_points,
         "points_geojson": points_geojson,
-        "explanation": (
+        "explanation": _tr(
+            lang,
             "Las zonas resaltadas representan concentraciones espaciales de registros mineralogicos "
-            "asociados al mineral seleccionado."
+            "asociados al mineral seleccionado.",
+            "Highlighted areas represent spatial concentrations of mineralogical records "
+            "associated with the selected mineral.",
         ),
     }, lang)
 

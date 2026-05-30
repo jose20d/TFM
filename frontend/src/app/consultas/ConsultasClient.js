@@ -96,6 +96,18 @@ function downloadText(filename, content, mimeType) {
   URL.revokeObjectURL(url);
 }
 
+function fallbackSummary(lang, totalCount) {
+  const total = Number(totalCount) || 0;
+  if (total > 0) {
+    return lang === "en"
+      ? `Found ${total} records matching the selected criteria.`
+      : `Se encontraron ${total} registros que cumplen los criterios seleccionados.`;
+  }
+  return lang === "en"
+    ? "No records found for selected criteria."
+    : "No se encontraron registros para los criterios seleccionados.";
+}
+
 export default function ConsultasClient() {
   const lang = useLang();
   const tr = (es, en) => (lang === "en" ? en : es);
@@ -265,6 +277,15 @@ export default function ConsultasClient() {
     () => (activeMode === "spatial" ? result.rows || [] : []),
     [activeMode, result.rows],
   );
+  const localizedSummary = useMemo(() => {
+    const apiSummary = typeof result?.summary === "string" ? result.summary.trim() : "";
+    const looksSpanishOnly = /se encontraron|depositos|paises|criterios seleccionados/i.test(apiSummary);
+    if (apiSummary && !(lang === "en" && looksSpanishOnly)) {
+      return apiSummary;
+    }
+    const totalCount = Number(result?.total_count || result?.result_count || 0);
+    return fallbackSummary(lang, totalCount);
+  }, [lang, result?.result_count, result?.summary, result?.total_count]);
 
   function buildQueryUrl(modeId, { limit, offset }) {
     const safeLimit = clampLimit(limit, RESULTS_PAGE_SIZE);
@@ -911,7 +932,7 @@ export default function ConsultasClient() {
               <tr>
                 <th>{tr("Pais", "Country")}</th>
                 <th>{tr("Depositos", "Deposits")}</th>
-                <th>PIB</th>
+                <th>{tr("PIB", "GDP")}</th>
                 <th>CPI</th>
                 <th>FSI</th>
                 <th>{tr("Intensidad relativa", "Relative intensity")}</th>
@@ -1057,7 +1078,7 @@ export default function ConsultasClient() {
             </div>
 
             <p className={`muted ${styles.summaryText}`}>
-              {result.summary || tr("No se encontraron registros para los criterios seleccionados.", "No records found for selected criteria.")}
+              {localizedSummary}
             </p>
             {activeMode !== "spatial" && Number(result.total_count || 0) > 0 && (
               <p className={`muted ${styles.summaryText}`}>
@@ -1089,7 +1110,7 @@ export default function ConsultasClient() {
               <div>
                 <p className="muted">{tr("Vista espacial compacta", "Compact spatial view")}</p>
                 <div className={styles.smallMap}>
-                  <SpatialResultsMap rows={spatialMapRows} />
+                  <SpatialResultsMap rows={spatialMapRows} lang={lang} />
                 </div>
               </div>
             )}

@@ -9,6 +9,10 @@ from web.services.common.query_service import fetch_all
 from web.services.common.query_service import fetch_one
 
 
+def _tr(lang: str, es: str, en: str) -> str:
+    return en if (lang or "").strip().lower() == "en" else es
+
+
 def deposits_by_mineral(
     country_iso3: str | None,
     mineral: str,
@@ -100,9 +104,17 @@ def deposits_by_mineral(
         "offset": offset,
         "limit": limit,
         "summary": (
-            f"Se encontraron {total_count} depositos que cumplen los criterios seleccionados."
+            _tr(
+                lang,
+                f"Se encontraron {total_count} depositos que cumplen los criterios seleccionados.",
+                f"Found {total_count} deposits matching the selected criteria.",
+            )
             if total_count
-            else "No se encontraron registros para los criterios seleccionados."
+            else _tr(
+                lang,
+                "No se encontraron registros para los criterios seleccionados.",
+                "No records found for selected criteria.",
+            )
         ),
         "rows": results,
     }, lang)
@@ -203,9 +215,17 @@ def combined_minerals(
         "offset": offset,
         "limit": limit,
         "summary": (
-            f"Se encontraron {total} depositos donde {mineral_a_q} y {mineral_b_q} aparecen juntos."
+            _tr(
+                lang,
+                f"Se encontraron {total} depositos donde {mineral_a_q} y {mineral_b_q} aparecen juntos.",
+                f"Found {total} deposits where {mineral_a_q} and {mineral_b_q} appear together.",
+            )
             if total
-            else "No se encontraron registros para los criterios seleccionados."
+            else _tr(
+                lang,
+                "No se encontraron registros para los criterios seleccionados.",
+                "No records found for selected criteria.",
+            )
         ),
         "coexistence": {
             "mineral_a": mineral_a_q,
@@ -254,7 +274,11 @@ def spatial_nearby(
             if base_row is None:
                 raise HTTPException(
                     status_code=404,
-                    detail="El deposito base no existe en el pais seleccionado o no tiene coordenadas validas.",
+                    detail=_tr(
+                        lang,
+                        "El deposito base no existe en el pais seleccionado o no tiene coordenadas validas.",
+                        "The base deposit does not exist in the selected country or has no valid coordinates.",
+                    ),
                 )
             base_dep = {
                 "name": base_row[1],
@@ -349,9 +373,17 @@ def spatial_nearby(
         "offset": offset,
         "limit": limit,
         "summary": (
-            f"Se encontraron {len(rows)} depositos cercanos al punto base."
+            _tr(
+                lang,
+                f"Se encontraron {len(rows)} depositos cercanos al punto base.",
+                f"Found {len(rows)} deposits near the base point.",
+            )
             if rows
-            else "No se encontraron registros para los criterios seleccionados."
+            else _tr(
+                lang,
+                "No se encontraron registros para los criterios seleccionados.",
+                "No records found for selected criteria.",
+            )
         ),
         "rows": rows,
     }, lang)
@@ -476,9 +508,17 @@ def country_profile(
         "offset": offset,
         "limit": limit,
         "summary": (
-            f"{total_count} paises cumplen los criterios seleccionados."
+            _tr(
+                lang,
+                f"{total_count} paises cumplen los criterios seleccionados.",
+                f"{total_count} countries match the selected criteria.",
+            )
             if total_count
-            else "No se encontraron registros para los criterios seleccionados."
+            else _tr(
+                lang,
+                "No se encontraron registros para los criterios seleccionados.",
+                "No records found for selected criteria.",
+            )
         ),
         "rows": results,
     }, lang)

@@ -2,8 +2,8 @@ import { Suspense } from "react";
 import ConsultasClient from "./ConsultasClient";
 
 export const metadata = {
-  title: "GeoContext | Consultas",
-  description: "Consultas guiadas para explorar depositos, minerales y proximidad espacial.",
+  title: "GeoContext | Queries",
+  description: "Guided queries to explore deposits, minerals, and spatial proximity.",
 };
 
 export default function ConsultasPage() {

@@ -14,11 +14,11 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-function formatNumber(value) {
+function formatNumber(value, locale = "es-ES") {
   if (value === null || value === undefined) return "N/A";
   const num = Number(value);
   if (!Number.isFinite(num)) return String(value);
-  return new Intl.NumberFormat("es-ES").format(num);
+  return new Intl.NumberFormat(locale).format(num);
 }
 
 function MapAutoZoom({ rows, countryIso, loading }) {
@@ -53,6 +53,7 @@ function MapAutoZoom({ rows, countryIso, loading }) {
 }
 
 export default function ExploreMap({ mapRows, countryIso, loading, lang }) {
+  const locale = lang === "en" ? "en-US" : "es-ES";
   return (
     <MapContainer
       center={DEFAULT_VIEW}
@@ -80,7 +81,7 @@ export default function ExploreMap({ mapRows, countryIso, loading, lang }) {
             <br />
             {lang === "en" ? "Minerals" : "Minerales"}: {item.minerals || "N/A"}
             <br />
-            {lang === "en" ? "Coordinates" : "Coordenadas"}: {formatNumber(item.latitude)}, {formatNumber(item.longitude)}
+            {lang === "en" ? "Coordinates" : "Coordenadas"}: {formatNumber(item.latitude, locale)}, {formatNumber(item.longitude, locale)}
             <br />
             {lang === "en" ? "Source" : "Fuente"}: MRDS
           </Tooltip>
