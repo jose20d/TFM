@@ -42,15 +42,17 @@ export default function AppHeader() {
             href={hrefWithLang(pathname, searchParams, "es")}
             className={lang === "es" ? "lang-btn active" : "lang-btn"}
             title="Espanol"
+            aria-label="Cambiar a espanol"
           >
-            🇪🇸
+            <img src="/flags/es.svg" alt="ES" className="lang-flag" />
           </Link>
           <Link
             href={hrefWithLang(pathname, searchParams, "en")}
             className={lang === "en" ? "lang-btn active" : "lang-btn"}
             title="English"
+            aria-label="Switch to English"
           >
-            🇬🇧
+            <img src="/flags/gb.svg" alt="EN" className="lang-flag" />
           </Link>
         </span>
       </nav>
