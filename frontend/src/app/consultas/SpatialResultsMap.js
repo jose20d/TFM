@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 
@@ -17,29 +17,42 @@ function formatNumber(value, decimals = 0, locale = "es-ES") {
   }).format(num);
 }
 
-function SpatialAutoZoom({ rows }) {
+function SpatialAutoZoom({ rows, countryIso }) {
   const map = useMap();
+  const lastCountryRef = useRef("__init__");
+  const pendingZoomRef = useRef(true);
 
   useEffect(() => {
+    const normalizedCountry = String(countryIso || "").toUpperCase();
+    if (normalizedCountry !== lastCountryRef.current) {
+      lastCountryRef.current = normalizedCountry;
+      pendingZoomRef.current = true;
+    }
+    if (!pendingZoomRef.current) return;
+
     const points = (rows || [])
       .map((row) => [Number(row.lat), Number(row.lng)])
       .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
 
     if (!points.length) {
+      if (normalizedCountry) return;
       map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: true });
+      pendingZoomRef.current = false;
       return;
     }
     if (points.length === 1) {
       map.setView(points[0], 7, { animate: true });
+      pendingZoomRef.current = false;
       return;
     }
     map.fitBounds(L.latLngBounds(points), { padding: [24, 24], maxZoom: 8, animate: true });
-  }, [map, rows]);
+    pendingZoomRef.current = false;
+  }, [map, rows, countryIso]);
 
   return null;
 }
 
-export default function SpatialResultsMap({ rows, lang = "es" }) {
+export default function SpatialResultsMap({ rows, countryIso = "", lang = "es" }) {
   const locale = lang === "en" ? "en-US" : "es-ES";
   const tr = (es, en) => (lang === "en" ? en : es);
   return (
@@ -48,7 +61,7 @@ export default function SpatialResultsMap({ rows, lang = "es" }) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <SpatialAutoZoom rows={rows} />
+      <SpatialAutoZoom rows={rows} countryIso={countryIso} />
       {(rows || []).map((row, idx) => {
         const lat = Number(row.lat);
         const lng = Number(row.lng);

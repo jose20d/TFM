@@ -198,6 +198,7 @@ export default function TerrenoClient() {
   const [freqError, setFreqError] = useState("");
   const [freqResult, setFreqResult] = useState(null);
   const [freqAutoZoomTrigger, setFreqAutoZoomTrigger] = useState(0);
+  const freqCountryZoomPendingRef = useRef(false);
   const [potentialCountryIso, setPotentialCountryIso] = useState("");
   const [potentialMineral, setPotentialMineral] = useState("");
   const [potentialMineralOptions, setPotentialMineralOptions] = useState([]);
@@ -206,6 +207,7 @@ export default function TerrenoClient() {
   const [potentialError, setPotentialError] = useState("");
   const [potentialResult, setPotentialResult] = useState(null);
   const [potentialAutoZoomTrigger, setPotentialAutoZoomTrigger] = useState(0);
+  const potentialCountryZoomPendingRef = useRef(false);
 
   const toolTabs = useMemo(
     () => [
@@ -417,14 +419,14 @@ export default function TerrenoClient() {
     setFreqMineral("");
     setFreqResult(null);
     setFreqError("");
-    setFreqAutoZoomTrigger((value) => value + 1);
+    freqCountryZoomPendingRef.current = Boolean(freqCountryIso);
   }, [freqCountryIso]);
 
   useEffect(() => {
     setPotentialResult(null);
     setPotentialError("");
-    setPotentialAutoZoomTrigger((value) => value + 1);
-  }, [potentialCountryIso, potentialMineral, potentialIntensity]);
+    potentialCountryZoomPendingRef.current = Boolean(potentialCountryIso);
+  }, [potentialCountryIso]);
 
   useEffect(() => {
     setPotentialMineralOptions([]);
@@ -510,15 +512,7 @@ export default function TerrenoClient() {
     setWidthKm(2);
     setCorridorResult(null);
     setAnalysisError("");
-    setAutoZoomTrigger((value) => value + 1);
   }
-
-  useEffect(() => {
-    if (activeTool !== "corridor") return;
-    if (!selectedFromId || !selectedToId) return;
-    if (selectedFromId === selectedToId) return;
-    setAutoZoomTrigger((value) => value + 1);
-  }, [activeTool, selectedFromId, selectedToId]);
 
   useEffect(() => {
     if (activeTool !== "corridor") return;
@@ -709,11 +703,15 @@ export default function TerrenoClient() {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`);
         setFreqResult(payload);
-        setFreqAutoZoomTrigger((value) => value + 1);
+        if (freqCountryZoomPendingRef.current) {
+          setFreqAutoZoomTrigger((value) => value + 1);
+          freqCountryZoomPendingRef.current = false;
+        }
       } catch (error) {
         if (error?.name === "AbortError") return;
         setFreqResult(null);
         setFreqError(error?.message || tr("No fue posible cargar minerales frecuentes.", "Could not load frequent minerals."));
+        freqCountryZoomPendingRef.current = false;
       } finally {
         setFreqLoading(false);
       }
@@ -746,11 +744,15 @@ export default function TerrenoClient() {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`);
         setPotentialResult(payload);
-        setPotentialAutoZoomTrigger((value) => value + 1);
+        if (potentialCountryZoomPendingRef.current) {
+          setPotentialAutoZoomTrigger((value) => value + 1);
+          potentialCountryZoomPendingRef.current = false;
+        }
       } catch (error) {
         if (error?.name === "AbortError") return;
         setPotentialResult(null);
         setPotentialError(error?.message || tr("No fue posible analizar el potencial exploratorio.", "Could not analyze exploratory potential."));
+        potentialCountryZoomPendingRef.current = false;
       } finally {
         setPotentialLoading(false);
       }
@@ -768,7 +770,6 @@ export default function TerrenoClient() {
     setZoneRadiusKm(10);
     setZoneResult(null);
     setZoneAnalysisError("");
-    setZoneAutoZoomTrigger((value) => value + 1);
   }
 
   const analyzeZone = useCallback(async () => {
@@ -1211,7 +1212,6 @@ export default function TerrenoClient() {
                       setZoneCenter(center);
                       setZoneResult(null);
                       setZoneAnalysisError("");
-                      setZoneAutoZoomTrigger((value) => value + 1);
                     }}
                   />
 
