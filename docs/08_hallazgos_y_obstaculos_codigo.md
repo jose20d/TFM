@@ -197,19 +197,21 @@ Para visualizar mejor dispersion con varios ordenes de magnitud:
 <YAxis type="number" dataKey="total_deposits" scale="log" domain={["auto", "auto"]} ... />
 ```
 
-### 6.8 Correccion de auto-zoom por pais en mapa
+### 6.8 Politica unificada de auto-zoom: solo por cambio de pais
 
-Se evita bloquear zoom por filas con `iso3` nulo o distinto:
+Se unifico el comportamiento en mapas de `Terreno`, `Explorar` y `Consultas Spatial` para que el auto-zoom ocurra solo cuando cambia el pais. Se eliminaron auto-zooms secundarios disparados por seleccion de puntos, filtros o resultados paginados.
 
 ```javascript
-const targetRows = rows.filter(
-  (item) => String(item.iso3 || "").toUpperCase() === countryIso,
-);
-if (!targetRows.length) return;
+const pendingZoomRef = useRef(true);
 
-const points = targetRows
-  .map((item) => [Number(item.latitude), Number(item.longitude)])
-  .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
+useEffect(() => {
+  pendingZoomRef.current = true;
+}, [countryIso]);
+
+// el fitBounds solo se ejecuta si hay cambio de pais pendiente
+if (!pendingZoomRef.current) return;
+map.fitBounds(bounds, { padding: [40, 40] });
+pendingZoomRef.current = false;
 ```
 
 ### 6.9 Estrategia i18n hibrida (diccionario canonico + materializacion ETL)

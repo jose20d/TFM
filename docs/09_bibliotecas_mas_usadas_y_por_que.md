@@ -20,7 +20,7 @@ Este documento lista las bibliotecas mas usadas actualmente en el proyecto y su 
    - **Aporte**:
      - enrutado por carpetas (`app/`),
      - rendering server/client segun pagina,
-     - API route proxy (`frontend/src/app/api/backend/[...path]/route.js`).
+    - API route proxy (`frontend/src/app/api/v1/[...path]/route.js`).
 
 2. **react**
    - **Por que se usa**: capa de componentes y estado en vistas interactivas.

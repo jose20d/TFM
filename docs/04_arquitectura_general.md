@@ -125,12 +125,12 @@ La arquitectura se fundamenta en los siguientes principios:
 
 ## 5. Alcance y limitaciones arquitectónicas
 
-La arquitectura implementada corresponde a un entorno académico y local. No incluye:
+La arquitectura implementada corresponde a un entorno académico con operación local y despliegue productivo centralizado (EC2 + Docker Compose + Ansible). No incluye:
 
 - Arquitectura distribuida.
 - Microservicios desacoplados por dominio.
 - Gestión avanzada de usuarios.
-- Despliegue en contenedores productivos (sí existe dockerización local de desarrollo).
+- Arquitectura de alta disponibilidad (multi-zona, failover automático y autoscaling).
 - Infraestructura de alta disponibilidad.
 
 Estas decisiones responden al alcance del proyecto, centrado en integración de datos, analítica y visualización operativa más que en despliegue enterprise.

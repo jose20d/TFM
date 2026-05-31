@@ -64,7 +64,7 @@ docker compose --profile jobs run --rm etl
 ## Production deployment
 
 - GitHub Actions workflow: `.github/workflows/deploy-production.yml`.
-- Trigger: push to `main`.
+- Trigger: push to `main` and manual execution via `workflow_dispatch`.
 - The deploy playbook (`ansible/deploy.yml`) now writes `/opt/tfm-geocontext/.env` from GitHub Secrets before `docker compose up -d`.
 - Recommended repository secrets:
   - `EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`
@@ -75,7 +75,7 @@ docker compose --profile jobs run --rm etl
 
 ## HTTPS (Let's Encrypt)
 
-- Planned production domain: `geocontext.app` (with optional `www.geocontext.app`).
+- Active production domain: `geocontext.app` (with optional `www.geocontext.app`).
 - Recommended rollout:
   1. Point DNS `A` records for `geocontext.app` and `www` to the EC2 public IP.
   2. Apply base HTTP reverse proxy:
