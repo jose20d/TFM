@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -23,16 +23,24 @@ function formatNumber(value, locale = "es-ES") {
 
 function MapAutoZoom({ rows, countryIso, loading }) {
   const map = useMap();
+  const lastCountryRef = useRef("__init__");
+  const pendingZoomRef = useRef(true);
 
   useEffect(() => {
-    if (loading) return;
-    if (!countryIso) {
+    const normalizedCountry = String(countryIso || "").toUpperCase();
+    if (normalizedCountry !== lastCountryRef.current) {
+      lastCountryRef.current = normalizedCountry;
+      pendingZoomRef.current = true;
+    }
+    if (!pendingZoomRef.current || loading) return;
+    if (!normalizedCountry) {
       map.setView(DEFAULT_VIEW, DEFAULT_ZOOM, { animate: true });
+      pendingZoomRef.current = false;
       return;
     }
     if (!rows.length) return;
 
-    const targetRows = rows.filter((item) => String(item.iso3 || "").toUpperCase() === countryIso);
+    const targetRows = rows.filter((item) => String(item.iso3 || "").toUpperCase() === normalizedCountry);
     if (!targetRows.length) return;
 
     const points = targetRows
@@ -42,11 +50,13 @@ function MapAutoZoom({ rows, countryIso, loading }) {
 
     if (points.length === 1) {
       map.setView(points[0], 6, { animate: true });
+      pendingZoomRef.current = false;
       return;
     }
 
     const bounds = L.latLngBounds(points);
     map.fitBounds(bounds, { padding: [30, 30], maxZoom: 7, animate: true });
+    pendingZoomRef.current = false;
   }, [map, rows, countryIso, loading]);
 
   return null;

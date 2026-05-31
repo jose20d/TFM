@@ -1110,7 +1110,7 @@ export default function ConsultasClient() {
               <div>
                 <p className="muted">{tr("Vista espacial compacta", "Compact spatial view")}</p>
                 <div className={styles.smallMap}>
-                  <SpatialResultsMap rows={spatialMapRows} lang={lang} />
+                  <SpatialResultsMap rows={spatialMapRows} countryIso={spatialFilters.countryIso} lang={lang} />
                 </div>
               </div>
             )}

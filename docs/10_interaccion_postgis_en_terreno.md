@@ -1,6 +1,6 @@
 # Interaccion de PostGIS en la pagina Terreno
 
-Este documento describe, de extremo a extremo, como interviene PostGIS en la pagina `Terreno` (subseccion `Corredor entre depositos`) y que partes de la pagina aun no dependen de analisis espacial avanzado.
+Este documento describe, de extremo a extremo, como interviene PostGIS en la pagina `Terreno`, con foco en `Corredor entre depositos` y referencia al resto de herramientas espaciales activas.
 
 ## 1) Rol de PostGIS en esta pagina
 
@@ -59,7 +59,7 @@ La pagina consume un endpoint dedicado:
 - `GET /api/v1/terrain/corridor`
 - parametros: `country_iso3`, `from_dep_id`, `to_dep_id`, `width_km`, `lang`
 
-Referencia: `web/app.py`
+Referencia: `web/routers/terrain_router.py`
 
 ```python
 @app.get("/api/v1/terrain/corridor")
@@ -87,7 +87,7 @@ Nota de serving: el endpoint retorna payload localizado mediante `lang=es/en` pa
 
 ### 4.1 Construccion de eje y corredor
 
-Referencia: `web/app.py`
+Referencia: `web/services/terrain_service.py`
 
 ```sql
 WITH endpoints AS (
@@ -118,7 +118,7 @@ Funciones espaciales clave:
 
 ### 4.2 Seleccion de depositos dentro del corredor
 
-Referencia: `web/app.py`
+Referencia: `web/services/terrain_service.py`
 
 ```sql
 ...
@@ -167,7 +167,7 @@ const qs = new URLSearchParams({
   width_km: String(widthKm),
 });
 
-const response = await fetch(`/api/backend/api/v1/terrain/corridor?${qs.toString()}`, {
+const response = await fetch(withLang(`/api/v1/terrain/corridor?${qs.toString()}`, lang), {
   cache: "no-store",
 });
 ```
@@ -219,7 +219,9 @@ useEffect(() => {
 ## 7) Alcance actual dentro de toda la pagina Terreno
 
 - `Corredor entre depositos`: implementacion real con PostGIS (productiva).
-- `Zona de interes`, `Minerales frecuentes`, `Potencial exploratorio`: actualmente en modo placeholder; aun no ejecutan analisis PostGIS en backend.
+- `Zona de interes`: implementacion activa en backend (`/api/v1/terrain/zone-interest`) con analisis espacial por radio y resultados localizados.
+- `Minerales frecuentes`: implementacion activa en backend (`/api/v1/terrain/frequent-minerals`) con agregacion analitica por pais y soporte bilingue.
+- `Potencial exploratorio`: implementacion activa en backend (`/api/v1/terrain/exploratory-potential`) con clasificacion espacial y explicacion localizada.
 
 ## 8) Resumen ejecutivo
 
