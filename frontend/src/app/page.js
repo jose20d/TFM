@@ -1,5 +1,6 @@
 import Image from "next/image";
 import AppHeader from "../components/AppHeader";
+import HomeCountryForm from "../components/HomeCountryForm";
 import { normalizeLang, t, withLang } from "../lib/i18n-core";
 
 const BACKEND_URL = process.env.BACKEND_API_URL || "http://127.0.0.1:8001";
@@ -296,21 +297,13 @@ export default async function Home({ searchParams }) {
             <p className="muted">
               {tr("Busca por nombre, ISO2 o ISO3.", "Search by name, ISO2 or ISO3.")}
             </p>
-            <form className="country-form" method="get">
-              <input type="hidden" name="lang" value={lang} />
-              <input
-                name="pais"
-                list="countries-options"
-                defaultValue={selected.label}
-                placeholder={tr("Ejemplo: Costa Rica, CR o CRI", "Example: Costa Rica, CR or CRI")}
-              />
-              <button type="submit">{t(lang, "homeLoad")}</button>
-            </form>
-            <datalist id="countries-options">
-              {countries.map((country) => (
-                <option key={`${country.country_name}-${country.iso3}`} value={countryOptionLabel(country)} />
-              ))}
-            </datalist>
+            <HomeCountryForm
+              lang={lang}
+              selectedLabel={selected.label}
+              placeholder={tr("Ejemplo: Costa Rica, CR o CRI", "Example: Costa Rica, CR or CRI")}
+              buttonText={t(lang, "homeLoad")}
+              options={countries.map((country) => countryOptionLabel(country))}
+            />
             {!dataHealth.db && (
               <p className="muted">
                 {tr(
