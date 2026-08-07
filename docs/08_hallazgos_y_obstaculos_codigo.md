@@ -555,3 +555,45 @@ localized = [
     if sort_key_localized(item.get("country_name")) not in EXCLUDED_COUNTRY_KEYS
 ]
 ```
+
+#### 8.10.6 Salto de scroll en `Inicio` al cambiar pais
+
+**Justificacion tecnica**
+
+- En `Inicio`, al enviar el formulario de pais con `method="get"` se producia navegacion completa y el navegador regresaba al top.
+- Esto degradaba UX en pantallas pequenas o sesiones con scroll profundo.
+- Se migro el submit a componente cliente y navegacion con `router.replace(..., { scroll: false })` para mantener la posicion vertical.
+
+**Muestra de codigo (`frontend/src/components/HomeCountryForm.js`)**
+
+```javascript
+const onSubmit = (event) => {
+  event.preventDefault();
+  const formData = new FormData(event.currentTarget);
+  const country = String(formData.get("pais") || "").trim();
+  const params = new URLSearchParams(searchParams?.toString() || "");
+  if (country) params.set("pais", country);
+  const href = `${pathname}?${params.toString()}`;
+  router.replace(href, { scroll: false });
+};
+```
+
+Resultado: el cambio de pais en `Inicio` mantiene el contexto visual del usuario y evita el salto abrupto al inicio de la pagina.
+
+#### 8.10.7 Anexo tecnico ETL con evidencia operativa
+
+**Justificacion tecnica**
+
+- El apartado principal de ETL en memoria academica quedaba corto en evidencia de ejecucion real (scripts, muestras raw, transformaciones intermedias y consultas de salida).
+- Se documento un anexo tecnico especifico para cubrir esa brecha y hacer trazable el flujo `Extract -> Transform -> Load` con fragmentos concretos del proyecto.
+
+**Referencia documental**
+
+- `docs/12_anexo_tecnico_proceso_etl.md`
+
+**Contenido agregado en el anexo**
+
+- inventario de scripts ETL reales (`main.py`, `etl/run_etl.py`, `scripts/download_datasets.py`, `scripts/load_to_db.py`);
+- muestras de dato crudo desde fuentes;
+- ejemplos de transformacion intermedia;
+- SQL de carga idempotente y consultas de validacion post-carga.
