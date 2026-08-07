@@ -17,7 +17,7 @@ export default function InternalAdminVisitsPage() {
     setLoading(true);
     setError("");
 
-    fetch("/api/internal-admin/visits?days=30", { cache: "no-store" })
+    fetch("/internal-admin/visits?days=30", { cache: "no-store" })
       .then(async (response) => {
         const raw = await response.text();
         const data = raw ? JSON.parse(raw) : {};

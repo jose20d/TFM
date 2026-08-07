@@ -39,5 +39,5 @@ export function middleware(request) {
 }
 
 export const config = {
-  matcher: ["/ctr-geo/:path*", "/api/internal-admin/:path*"],
+  matcher: ["/ctr-geo/:path*", "/api/internal-admin/:path*", "/internal-admin/:path*"],
 };
