@@ -1,5 +1,5 @@
 ---
-- name: Bootstrap base para EC2 production (Ubuntu 24.04)
+- name: Bootstrap baseline for production EC2 (Ubuntu 24.04)
   hosts: production
   become: true
   gather_facts: true
@@ -13,7 +13,17 @@
       {{ ansible_distribution_release }} stable
 
   tasks:
-    - name: Esperar liberación de locks de apt/dpkg
+    - name: Stop unattended apt background services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - apt-daily.service
+        - apt-daily-upgrade.service
+        - unattended-upgrades.service
+      failed_when: false
+
+    - name: Wait for apt/dpkg lock release
       ansible.builtin.command: >-
         bash -lc '! fuser /var/lib/dpkg/lock >/dev/null 2>&1
         && ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1
@@ -25,15 +35,15 @@
       delay: 5
       until: apt_lock_check.rc == 0
 
-    # Actualiza índice apt para partir de un estado conocido.
-    - name: Actualizar apt cache
+    # Update apt index from a known-good baseline.
+    - name: Update apt cache
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
         lock_timeout: 600
 
-    # Instala dependencias básicas para administración del servidor.
-    - name: Instalar paquetes básicos
+    # Install base dependencies for server administration.
+    - name: Install base packages
       ansible.builtin.apt:
         name:
           - ca-certificates
@@ -43,35 +53,35 @@
         state: present
         lock_timeout: 600
 
-    # Crea directorio estándar para llaves de repositorios apt.
-    - name: Crear directorio para keyrings de apt
+    # Create standard directory for apt repository keyrings.
+    - name: Create apt keyrings directory
       ansible.builtin.file:
         path: /etc/apt/keyrings
         state: directory
         mode: "0755"
 
-    # Descarga la llave GPG oficial de Docker.
-    - name: Descargar llave GPG oficial de Docker
+    # Download official Docker GPG key.
+    - name: Download official Docker GPG key
       ansible.builtin.get_url:
         url: "{{ docker_apt_key_url }}"
         dest: "{{ docker_apt_keyring_path }}"
         mode: "0644"
 
-    # Registra repositorio oficial de Docker para Ubuntu.
-    - name: Configurar repositorio oficial de Docker
+    # Register official Docker repository for Ubuntu.
+    - name: Configure official Docker repository
       ansible.builtin.apt_repository:
         repo: "{{ docker_apt_repo }}"
         filename: docker
         state: present
 
-    # Refresca apt cache tras agregar el nuevo repositorio.
-    - name: Actualizar apt cache después de añadir Docker repo
+    # Refresh apt cache after adding Docker repository.
+    - name: Update apt cache after adding Docker repository
       ansible.builtin.apt:
         update_cache: true
         lock_timeout: 600
 
-    # Instala motor Docker, CLI y plugins solicitados.
-    - name: Instalar Docker Engine y plugins
+    # Install Docker Engine, CLI, and required plugins.
+    - name: Install Docker Engine and plugins
       ansible.builtin.apt:
         name:
           - docker-ce
@@ -82,33 +92,33 @@
         state: present
         lock_timeout: 600
 
-    # Asegura que el servicio Docker esté activo y habilitado en reboot.
-    - name: Habilitar e iniciar servicio Docker
+    # Ensure Docker service is running and enabled after reboot.
+    - name: Enable and start Docker service
       ansible.builtin.service:
         name: docker
         enabled: true
         state: started
 
-    # Permite ejecutar Docker sin sudo para el usuario ubuntu.
-    - name: Agregar usuario ubuntu al grupo docker
+    # Allow Docker usage without sudo for ubuntu user.
+    - name: Add ubuntu user to docker group
       ansible.builtin.user:
         name: ubuntu
         groups: docker
         append: true
 
-    # Validación rápida de instalación de Docker.
-    - name: Validar docker --version
+    # Quick validation of Docker installation.
+    - name: Validate docker --version
       ansible.builtin.command: docker --version
       changed_when: false
       register: docker_version_cmd
 
-    # Validación rápida del plugin Docker Compose.
-    - name: Validar docker compose version
+    # Quick validation of Docker Compose plugin.
+    - name: Validate docker compose version
       ansible.builtin.command: docker compose version
       changed_when: false
       register: docker_compose_version_cmd
 
-    - name: Mostrar versiones instaladas
+    - name: Display installed versions
       ansible.builtin.debug:
         msg:
           - "{{ docker_version_cmd.stdout }}"

@@ -1,5 +1,5 @@
 ---
-- name: Habilitar HTTPS con Let's Encrypt en production
+- name: Enable HTTPS with Let's Encrypt in production
   hosts: production
   become: true
   gather_facts: true
@@ -12,7 +12,17 @@
     certbot_webroot: /var/www/certbot
 
   tasks:
-    - name: Esperar liberación de locks de apt/dpkg
+    - name: Stop unattended apt background services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - apt-daily.service
+        - apt-daily-upgrade.service
+        - unattended-upgrades.service
+      failed_when: false
+
+    - name: Wait for apt/dpkg lock release
       ansible.builtin.command: >-
         bash -lc '! fuser /var/lib/dpkg/lock >/dev/null 2>&1
         && ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1
@@ -24,16 +34,16 @@
       delay: 5
       until: apt_lock_check.rc == 0
 
-    # Verifica configuración mínima requerida para solicitar certificados.
-    - name: Validar email para Let's Encrypt
+    # Validate minimum settings required for certificate issuance.
+    - name: Validate Let's Encrypt email
       ansible.builtin.assert:
         that:
           - letsencrypt_email is string
           - "'@' in letsencrypt_email"
-        fail_msg: "Define letsencrypt_email válido (ejemplo: ops@geocontext.app)."
+        fail_msg: "Set a valid letsencrypt_email value (example: ops@geocontext.app)."
 
-    # Instala Certbot y plugin de Nginx como solicita el requerimiento.
-    - name: Instalar certbot y plugin nginx
+    # Install Certbot and Nginx plugin.
+    - name: Install Certbot and Nginx plugin
       ansible.builtin.apt:
         name:
           - certbot
@@ -42,29 +52,29 @@
         update_cache: true
         lock_timeout: 600
 
-    # Confirma que Nginx esté activo antes de emitir certificados.
-    - name: Verificar que nginx esté activo
+    # Ensure Nginx is running before requesting certificates.
+    - name: Gather service facts
       ansible.builtin.service_facts:
 
-    - name: Validar estado running de nginx
+    - name: Validate Nginx running state
       ansible.builtin.assert:
         that:
           - "'nginx.service' in ansible_facts.services"
           - ansible_facts.services['nginx.service'].state == 'running'
-        fail_msg: "Nginx no está corriendo. Ejecuta ansible/nginx.yml antes de HTTPS."
+        fail_msg: "Nginx is not running. Run ansible/nginx.yml before ansible/https.yml."
 
-    # Verifica resolución DNS para dominio raíz y www desde la EC2.
-    - name: Validar resolución DNS de geocontext.app
+    # Validate DNS resolution for root and www domains from EC2.
+    - name: Validate DNS resolution for geocontext.app
       ansible.builtin.command: getent hosts {{ geocontext_domain }}
       register: dns_root_check
       changed_when: false
 
-    - name: Validar resolución DNS de www.geocontext.app
+    - name: Validate DNS resolution for www.geocontext.app
       ansible.builtin.command: getent hosts {{ geocontext_alt_domains[0] }}
       register: dns_www_check
       changed_when: false
 
-    - name: Crear webroot para desafíos ACME
+    - name: Create ACME challenge webroot
       ansible.builtin.file:
         path: "{{ certbot_webroot }}"
         state: directory
@@ -72,8 +82,8 @@
         group: root
         mode: "0755"
 
-    # Emite (o renueva) certificado para dominio principal y alterno.
-    - name: Solicitar/renovar certificado Let's Encrypt por webroot
+    # Issue (or renew) certificate for root and alternate domains.
+    - name: Request/renew Let's Encrypt certificate via webroot
       ansible.builtin.command: >-
         certbot certonly --webroot -w {{ certbot_webroot }}
         -d {{ geocontext_domain }}
@@ -84,8 +94,8 @@
         ('Successfully received certificate' in certbot_result.stdout) or
         ('Congratulations' in certbot_result.stdout)
 
-    # Instala configuración TLS de Nginx con redirect 80 -> 443.
-    - name: Renderizar configuración HTTPS de GeoContext
+    # Render Nginx TLS configuration with HTTP to HTTPS redirect.
+    - name: Render GeoContext HTTPS Nginx configuration
       ansible.builtin.template:
         src: templates/geocontext-nginx-https.conf.j2
         dest: /etc/nginx/sites-available/geocontext.conf
@@ -93,31 +103,31 @@
         group: root
         mode: "0644"
 
-    - name: Validar configuración de nginx
+    - name: Validate Nginx configuration
       ansible.builtin.command: nginx -t
       changed_when: false
 
-    - name: Reiniciar nginx para aplicar TLS
+    - name: Restart Nginx to apply TLS
       ansible.builtin.service:
         name: nginx
         state: restarted
 
-    # Comprueba que HTTPS responda correctamente desde la propia instancia.
-    - name: Verificar endpoint HTTPS de geocontext.app
+    # Verify HTTPS endpoint responds from within the instance.
+    - name: Verify HTTPS endpoint for geocontext.app
       ansible.builtin.uri:
         url: https://{{ geocontext_domain }}
         method: GET
         status_code: [200, 301, 302]
         validate_certs: true
 
-    # Certbot instala timer automático; se fuerza habilitado para renovación continua.
-    - name: Habilitar timer de renovación automática de certbot
+    # Certbot installs an automatic timer; ensure it remains enabled.
+    - name: Enable Certbot auto-renew timer
       ansible.builtin.service:
         name: certbot.timer
         enabled: true
         state: started
 
-    - name: Crear hook de renovación para recargar nginx
+    - name: Create renewal hook to reload Nginx
       ansible.builtin.copy:
         dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
         owner: root
@@ -128,8 +138,8 @@
           set -euo pipefail
           systemctl reload nginx
 
-    # Valida el flujo de renovación automática sin consumir cuota real.
-    - name: Probar renovación automática de certificados (dry-run)
+    # Validate auto-renew flow without consuming real issuance quota.
+    - name: Test certificate auto-renew flow (dry-run)
       ansible.builtin.command: certbot renew --dry-run
       register: certbot_dry_run_result
       retries: 3
@@ -141,11 +151,11 @@
         ('Service busy; retry later' not in (certbot_dry_run_result.stderr | default('')))
       changed_when: false
 
-    - name: Avisar si dry-run no bloqueante por rate limit temporal
+    - name: Warn when dry-run hits temporary rate limit
       ansible.builtin.debug:
         msg: >-
-          Certbot dry-run devolvió rate limit temporal de Let's Encrypt.
-          El certificado activo sigue válido; reintentar más tarde.
+          Certbot dry-run returned a temporary Let's Encrypt rate limit.
+          The active certificate remains valid; retry later.
       when: >-
         certbot_dry_run_result.rc != 0 and (
           'rateLimited' in (certbot_dry_run_result.stderr | default('')) or
