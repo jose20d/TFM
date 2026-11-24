@@ -13,6 +13,22 @@
       {{ ansible_distribution_release }} stable
 
   tasks:
+    - name: Esperar liberación de locks de apt/dpkg
+      ansible.builtin.shell: |
+        timeout 600 bash -c '
+          while \
+            fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
+            fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+            fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+            fuser /var/cache/apt/archives/lock >/dev/null 2>&1
+          do
+            sleep 5
+          done
+        '
+      args:
+        executable: /bin/bash
+      changed_when: false
+
     # Actualiza índice apt para partir de un estado conocido.
     - name: Actualizar apt cache
       ansible.builtin.apt:
