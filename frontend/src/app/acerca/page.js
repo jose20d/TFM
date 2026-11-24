@@ -6,30 +6,30 @@ const CONTENT = {
     title: "Acerca de GeoContext",
     seoTitle: "GeoContext | Acerca de",
     seoDescription:
-      "Origen, proposito, equipo academico y mantenimiento actual de GeoContext.",
-    whatIsTitle: "Que es GeoContext?",
+      "Origen, propósito, equipo académico y mantenimiento actual de GeoContext.",
+    whatIsTitle: "¿Qué es GeoContext?",
     whatIsText:
-      "GeoContext es una plataforma web de exploracion y analisis territorial de recursos minerales que integra informacion geologica con indicadores economicos e institucionales de diferentes paises.",
+      "GeoContext es una plataforma web de exploración y análisis territorial de recursos minerales que integra información geológica con indicadores económicos e institucionales de diferentes países.",
     purposeText:
-      "Su proposito es facilitar el acceso, la visualizacion y el analisis de informacion geologica mediante herramientas interactivas, ofreciendo un recurso util para estudiantes, investigadores, coleccionistas y aficionados a la mineralogia.",
+      "Su propósito es facilitar el acceso, la visualización y el análisis de información geológica mediante herramientas interactivas, ofreciendo un recurso útil para estudiantes, investigadores, coleccionistas y aficionados a la mineralogía.",
     originTitle: "Origen del proyecto",
     originText1:
-      "GeoContext nacio en 2026 como parte de un Trabajo Final de Master en Big Data & Business Analytics de Next Educacion, Espana.",
+      "GeoContext nació en 2026 como parte de un Trabajo Final de Máster en Big Data & Business Analytics de Next Educación, España.",
     originText2:
-      "El proyecto surgio de la necesidad de integrar fuentes de informacion geologica, economica e institucional que tradicionalmente se encontraban dispersas, desarrollando una arquitectura capaz de relacionarlas mediante una dimension territorial comun.",
+      "El proyecto surgió de la necesidad de integrar fuentes de información geológica, económica e institucional que tradicionalmente se encontraban dispersas, desarrollando una arquitectura capaz de relacionarlas mediante una dimensión territorial común.",
     originText3:
-      "Tras finalizar su etapa academica, GeoContext continua activo como una plataforma independiente, con el objetivo de ampliar progresivamente sus funcionalidades y capacidades de exploracion geologica.",
-    teamTitle: "Equipo y creditos",
-    teamText: "El proyecto academico fue desarrollado por:",
-    currentLeadTitle: "Mantenimiento y evolucion actual",
+      "Tras finalizar su etapa académica, GeoContext continúa activo como una plataforma independiente, con el objetivo de ampliar progresivamente sus funcionalidades y capacidades de exploración geológica.",
+    teamTitle: "Equipo y créditos",
+    teamText: "El proyecto académico fue desarrollado por:",
+    currentLeadTitle: "Mantenimiento y evolución actual",
     currentLeadText:
-      "Jose Daniel Alfaro Alfaro es actualmente el responsable del mantenimiento, desarrollo y evolucion de GeoContext.",
-    sourcesTitle: "Fuentes y tecnologias",
-    sourcesText: "GeoContext utiliza informacion publica procedente de:",
+      "José Daniel Alfaro Alfaro es actualmente el responsable del mantenimiento, desarrollo y evolución de GeoContext.",
+    sourcesTitle: "Fuentes y tecnologías",
+    sourcesText: "GeoContext utiliza información pública procedente de:",
     techText:
-      "La plataforma esta desarrollada principalmente con Python, FastAPI, PostgreSQL, PostGIS, Next.js y Docker.",
+      "La plataforma está desarrollada principalmente con Python, FastAPI, PostgreSQL, PostGIS, Next.js y Docker, e incorpora mecanismos de integración y despliegue continuo (CI/CD) mediante Ansible.",
     disclaimer:
-      "GeoContext es un proyecto independiente y no representa oficialmente a las instituciones proveedoras de informacion.",
+      "GeoContext es un proyecto independiente y no representa oficialmente a las instituciones proveedoras de información.",
     linksTitle: "Enlaces del proyecto",
     githubLabel: "GitHub — Repositorio del proyecto",
     linkedinLabel: "LinkedIn — Responsable actual",
@@ -46,7 +46,7 @@ const CONTENT = {
       "Its purpose is to facilitate access, visualization, and analysis of geological information through interactive tools, offering a useful resource for students, researchers, collectors, and mineralogy enthusiasts.",
     originTitle: "Project origin",
     originText1:
-      "GeoContext was created in 2026 as part of a Master's Final Project in Big Data & Business Analytics at Next Educacion, Spain.",
+      "GeoContext was created in 2026 as part of a Master's Final Project in Big Data & Business Analytics at Next Educación, Spain.",
     originText2:
       "The project emerged from the need to integrate geological, economic, and institutional data sources that were traditionally scattered, developing an architecture capable of linking them through a shared territorial dimension.",
     originText3:
@@ -55,11 +55,11 @@ const CONTENT = {
     teamText: "The academic project was developed by:",
     currentLeadTitle: "Current maintenance and evolution",
     currentLeadText:
-      "Jose Daniel Alfaro Alfaro is currently responsible for the maintenance, development, and evolution of GeoContext.",
+      "José Daniel Alfaro Alfaro is currently responsible for the maintenance, development, and evolution of GeoContext.",
     sourcesTitle: "Sources and technologies",
     sourcesText: "GeoContext uses public information from:",
     techText:
-      "The platform is primarily built with Python, FastAPI, PostgreSQL, PostGIS, Next.js, and Docker.",
+      "The platform is primarily built with Python, FastAPI, PostgreSQL, PostGIS, Next.js, and Docker, and incorporates continuous integration and deployment (CI/CD) mechanisms using Ansible.",
     disclaimer:
       "GeoContext is an independent project and does not officially represent the data provider institutions.",
     linksTitle: "Project links",
@@ -69,10 +69,10 @@ const CONTENT = {
 };
 
 const ACADEMIC_TEAM = [
-  "Jose Daniel Alfaro Alfaro",
+  "José Daniel Alfaro Alfaro",
   "Daniela Corona Miguel",
-  "Feeby Mendez Villalobos",
-  "Marco Ramirez Gomez",
+  "Feeby Méndez Villalobos",
+  "Marco Ramírez Gómez",
 ];
 
 const DATA_SOURCES = [
