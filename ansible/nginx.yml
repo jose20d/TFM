@@ -1,5 +1,5 @@
 ---
-- name: Configurar Nginx reverse proxy para production
+- name: Configure Nginx reverse proxy for production
   hosts: production
   become: true
   gather_facts: true
@@ -9,7 +9,17 @@
       - www.geocontext.app
 
   tasks:
-    - name: Esperar liberación de locks de apt/dpkg
+    - name: Stop unattended apt background services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - apt-daily.service
+        - apt-daily-upgrade.service
+        - unattended-upgrades.service
+      failed_when: false
+
+    - name: Wait for apt/dpkg lock release
       ansible.builtin.command: >-
         bash -lc '! fuser /var/lib/dpkg/lock >/dev/null 2>&1
         && ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1
@@ -21,7 +31,7 @@
       delay: 5
       until: apt_lock_check.rc == 0
 
-    - name: Crear webroot para desafíos ACME
+    - name: Create ACME challenge webroot
       ansible.builtin.file:
         path: /var/www/certbot
         state: directory
@@ -29,33 +39,33 @@
         group: root
         mode: "0755"
 
-    # Instala Nginx desde repositorios de Ubuntu.
-    - name: Instalar nginx
+    # Install Nginx from Ubuntu repositories.
+    - name: Install Nginx
       ansible.builtin.apt:
         name: nginx
         state: present
         update_cache: true
         lock_timeout: 600
 
-    # Asegura que el servicio esté habilitado al reiniciar la VM.
-    - name: Habilitar servicio nginx
+    # Ensure service is enabled across VM reboots.
+    - name: Enable Nginx service
       ansible.builtin.service:
         name: nginx
         enabled: true
 
-    # Elimina sitio por defecto para evitar conflicto con GeoContext.
-    - name: Eliminar default site habilitado
+    # Remove default site to avoid conflicts with GeoContext.
+    - name: Remove enabled default site
       ansible.builtin.file:
         path: /etc/nginx/sites-enabled/default
         state: absent
 
-    - name: Eliminar default site disponible
+    - name: Remove available default site
       ansible.builtin.file:
         path: /etc/nginx/sites-available/default
         state: absent
 
-    # Renderiza server block principal para production HTTP.
-    - name: Crear configuración Nginx de GeoContext
+    # Render main HTTP server block for production.
+    - name: Render GeoContext Nginx configuration
       ansible.builtin.template:
         src: templates/geocontext-nginx.conf.j2
         dest: /etc/nginx/sites-available/geocontext.conf
@@ -63,20 +73,20 @@
         group: root
         mode: "0644"
 
-    # Habilita el server block mediante enlace simbólico.
-    - name: Habilitar site GeoContext
+    # Enable server block via symbolic link.
+    - name: Enable GeoContext site
       ansible.builtin.file:
         src: /etc/nginx/sites-available/geocontext.conf
         dest: /etc/nginx/sites-enabled/geocontext.conf
         state: link
 
-    # Valida sintaxis antes de reiniciar.
-    - name: Validar configuración de nginx
+    # Validate syntax before restart.
+    - name: Validate Nginx configuration
       ansible.builtin.command: nginx -t
       changed_when: false
 
-    # Reinicia para aplicar cambios nuevos.
-    - name: Reiniciar nginx
+    # Restart to apply new configuration.
+    - name: Restart Nginx
       ansible.builtin.service:
         name: nginx
         state: restarted
