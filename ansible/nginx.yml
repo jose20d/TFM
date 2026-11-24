@@ -23,6 +23,7 @@
         name: nginx
         state: present
         update_cache: true
+        lock_timeout: 600
 
     # Asegura que el servicio esté habilitado al reiniciar la VM.
     - name: Habilitar servicio nginx
