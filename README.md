@@ -1,6 +1,40 @@
-# TFM — Main Project Codebase
+# GeoContext
 
-This repository contains the production code for the thesis project: ETL, analytical API, and bilingual frontend.
+GeoContext is a web platform for territorial exploration and analysis of mineral resources. It integrates geological information with economic and institutional indicators to support exploration, comparison, and contextual analysis workflows.
+
+**Website:** [https://geocontext.app/](https://geocontext.app/)
+
+## Academic origin (2026)
+
+GeoContext started in 2026 as a Master's Final Project in Big Data & Business Analytics at Next Educacion (Spain).
+
+Academic team:
+
+- Jose Daniel Alfaro Alfaro
+- Daniela Corona Miguel
+- Feeby Mendez Villalobos
+- Marco Ramirez Gomez
+
+## Current maintenance
+
+Currently, the maintenance, development, and evolution of GeoContext are led by Jose Daniel Alfaro Alfaro.
+
+**LinkedIn:** [https://www.linkedin.com/in/jose-alfaro-alfaro](https://www.linkedin.com/in/jose-alfaro-alfaro)
+
+## Core technologies
+
+- Backend: Python + FastAPI
+- Frontend: Next.js
+- Database: PostgreSQL + PostGIS
+- Containers: Docker
+- Automation and deployment: Ansible + CI/CD
+
+## Data sources
+
+- USGS — Mineral Resources Data System (MRDS)
+- World Bank — World Development Indicators (WDI) and Worldwide Governance Indicators (WGI)
+- Transparency International — Corruption Perceptions Index (CPI)
+- Fund for Peace — Fragile States Index (FSI)
 
 ## Current scope
 
@@ -135,6 +169,12 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 - Generated data and local outputs are ignored by `.gitignore`.
 - Sensitive local env files are ignored (`.env*`, except `.env.example`).
 - `README_WINDOWS.md` is local-only documentation (not tracked in Git).
+
+## Official links
+
+- Platform: [https://geocontext.app/](https://geocontext.app/)
+- Repository: [https://github.com/jose20d/TFM](https://github.com/jose20d/TFM)
+- Maintainer LinkedIn: [https://www.linkedin.com/in/jose-alfaro-alfaro](https://www.linkedin.com/in/jose-alfaro-alfaro)
 
 
 

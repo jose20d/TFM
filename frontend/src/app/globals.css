@@ -793,3 +793,87 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+.about-container {
+  display: grid;
+  gap: 1rem;
+}
+
+.about-hero-panel h1 {
+  margin: 0 0 0.8rem;
+}
+
+.about-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.about-team-list,
+.about-source-list {
+  margin: 0.6rem 0 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.about-team-item {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid rgba(104, 144, 182, 0.22);
+  border-radius: 8px;
+  background: rgba(8, 27, 49, 0.6);
+  list-style: none;
+}
+
+.about-maintainer-box {
+  margin-top: 0.9rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(66, 198, 184, 0.45);
+  border-radius: 10px;
+  background: rgba(12, 43, 64, 0.45);
+}
+
+.about-maintainer-box h3 {
+  margin: 0 0 0.4rem;
+  color: var(--teal);
+}
+
+.about-disclaimer {
+  margin-top: 0.95rem;
+}
+
+.about-disclaimer-small {
+  margin-top: 0.7rem;
+  font-size: 0.9rem;
+}
+
+.about-links {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.about-link-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid rgba(104, 144, 182, 0.3);
+  border-radius: 10px;
+  padding: 0.75rem 0.8rem;
+  background: rgba(8, 27, 49, 0.6);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.about-link-card:hover {
+  border-color: rgba(66, 198, 184, 0.8);
+  transform: translateY(-1px);
+}
+
+.about-link-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 1.1rem;
+}
+
+@media (max-width: 1024px) {
+  .about-grid {
+    grid-template-columns: 1fr;
+  }
+}
