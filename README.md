@@ -6,18 +6,18 @@ GeoContext is a web platform for territorial exploration and analysis of mineral
 
 ## Academic origin (2026)
 
-GeoContext started in 2026 as a Master's Final Project in Big Data & Business Analytics at Next Educacion (Spain).
+GeoContext started in 2026 as a Master's Final Project in Big Data & Business Analytics at Next Educación (Spain).
 
 Academic team:
 
-- Jose Daniel Alfaro Alfaro
+- José Daniel Alfaro Alfaro
 - Daniela Corona Miguel
-- Feeby Mendez Villalobos
-- Marco Ramirez Gomez
+- Feeby Méndez Villalobos
+- Marco Ramírez Gómez
 
 ## Current maintenance
 
-Currently, the maintenance, development, and evolution of GeoContext are led by Jose Daniel Alfaro Alfaro.
+Currently, the maintenance, development, and evolution of GeoContext are led by José Daniel Alfaro Alfaro.
 
 **LinkedIn:** [https://www.linkedin.com/in/jose-alfaro-alfaro](https://www.linkedin.com/in/jose-alfaro-alfaro)
 
