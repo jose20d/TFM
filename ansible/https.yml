@@ -12,6 +12,22 @@
     certbot_webroot: /var/www/certbot
 
   tasks:
+    - name: Esperar liberación de locks de apt/dpkg
+      ansible.builtin.shell: |
+        timeout 600 bash -c '
+          while \
+            fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
+            fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+            fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+            fuser /var/cache/apt/archives/lock >/dev/null 2>&1
+          do
+            sleep 5
+          done
+        '
+      args:
+        executable: /bin/bash
+      changed_when: false
+
     # Verifica configuración mínima requerida para solicitar certificados.
     - name: Validar email para Let's Encrypt
       ansible.builtin.assert:
@@ -28,6 +44,7 @@
           - python3-certbot-nginx
         state: present
         update_cache: true
+        lock_timeout: 600
 
     # Confirma que Nginx esté activo antes de emitir certificados.
     - name: Verificar que nginx esté activo

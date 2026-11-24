@@ -13,11 +13,28 @@
       {{ ansible_distribution_release }} stable
 
   tasks:
+    - name: Esperar liberación de locks de apt/dpkg
+      ansible.builtin.shell: |
+        timeout 600 bash -c '
+          while \
+            fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
+            fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+            fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+            fuser /var/cache/apt/archives/lock >/dev/null 2>&1
+          do
+            sleep 5
+          done
+        '
+      args:
+        executable: /bin/bash
+      changed_when: false
+
     # Actualiza índice apt para partir de un estado conocido.
     - name: Actualizar apt cache
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
+        lock_timeout: 600
 
     # Instala dependencias básicas para administración del servidor.
     - name: Instalar paquetes básicos
@@ -28,6 +45,7 @@
           - gnupg
           - git
         state: present
+        lock_timeout: 600
 
     # Crea directorio estándar para llaves de repositorios apt.
     - name: Crear directorio para keyrings de apt
@@ -54,6 +72,7 @@
     - name: Actualizar apt cache después de añadir Docker repo
       ansible.builtin.apt:
         update_cache: true
+        lock_timeout: 600
 
     # Instala motor Docker, CLI y plugins solicitados.
     - name: Instalar Docker Engine y plugins
@@ -65,6 +84,7 @@
           - docker-buildx-plugin
           - docker-compose-plugin
         state: present
+        lock_timeout: 600
 
     # Asegura que el servicio Docker esté activo y habilitado en reboot.
     - name: Habilitar e iniciar servicio Docker

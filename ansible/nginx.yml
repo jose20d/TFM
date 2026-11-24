@@ -9,6 +9,22 @@
       - www.geocontext.app
 
   tasks:
+    - name: Esperar liberación de locks de apt/dpkg
+      ansible.builtin.shell: |
+        timeout 600 bash -c '
+          while \
+            fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
+            fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+            fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+            fuser /var/cache/apt/archives/lock >/dev/null 2>&1
+          do
+            sleep 5
+          done
+        '
+      args:
+        executable: /bin/bash
+      changed_when: false
+
     - name: Crear webroot para desafíos ACME
       ansible.builtin.file:
         path: /var/www/certbot
@@ -23,6 +39,7 @@
         name: nginx
         state: present
         update_cache: true
+        lock_timeout: 600
 
     # Asegura que el servicio esté habilitado al reiniciar la VM.
     - name: Habilitar servicio nginx
