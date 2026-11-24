@@ -14,20 +14,16 @@
 
   tasks:
     - name: Esperar liberación de locks de apt/dpkg
-      ansible.builtin.shell: |
-        timeout 600 bash -c '
-          while \
-            fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
-            fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
-            fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
-            fuser /var/cache/apt/archives/lock >/dev/null 2>&1
-          do
-            sleep 5
-          done
-        '
-      args:
-        executable: /bin/bash
+      ansible.builtin.command: >-
+        bash -lc '! fuser /var/lib/dpkg/lock >/dev/null 2>&1
+        && ! fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1
+        && ! fuser /var/lib/apt/lists/lock >/dev/null 2>&1
+        && ! fuser /var/cache/apt/archives/lock >/dev/null 2>&1'
+      register: apt_lock_check
       changed_when: false
+      retries: 120
+      delay: 5
+      until: apt_lock_check.rc == 0
 
     # Actualiza índice apt para partir de un estado conocido.
     - name: Actualizar apt cache
