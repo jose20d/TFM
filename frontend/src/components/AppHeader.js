@@ -37,6 +37,7 @@ export default function AppHeader() {
         <Link href={routeWithLang("/analisis", lang)}>{t(lang, "navAnalysis")}</Link>
         <Link href={routeWithLang("/terreno", lang)}>{t(lang, "navTerrain")}</Link>
         <Link href={routeWithLang("/consultas", lang)}>{t(lang, "navQueries")}</Link>
+        <Link href={routeWithLang("/acerca", lang)}>{t(lang, "navAbout")}</Link>
         <span className="lang-switch" aria-label="language-switcher">
           <Link
             href={hrefWithLang(pathname, searchParams, "es")}
